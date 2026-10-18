@@ -27,7 +27,7 @@
   nameInput.value = savedName;
   nameInput.placeholder = "Nome automático da sua sessão";
   nameInput.addEventListener("input", () => {
-    const cleaned = nameInput.value.replace(/[<>\\r\\n\\t]/g, "").trim().slice(0, 32);
+    const cleaned = nameInput.value.replace(/[<>]/g, "").trim().slice(0, 32);
     try {
       if (cleaned) localStorage.setItem(NAME_KEY, cleaned);
       else localStorage.setItem(NAME_KEY, makeAutomaticName());
@@ -94,7 +94,7 @@
       try {
         const data = JSON.parse(value);
         if (data.type === "join") {
-          data.name = (nameInput.value || savedName || makeAutomaticName()).replace(/[<>\\r\\n\\t]/g, "").trim().slice(0, 32) || savedName;
+          data.name = (nameInput.value || savedName || makeAutomaticName()).replace(/[<>]/g, "").trim().slice(0, 32) || savedName;
           outgoing = JSON.stringify(data);
         }
       } catch {}
