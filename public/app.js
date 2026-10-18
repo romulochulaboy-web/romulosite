@@ -15,15 +15,16 @@ function showNotice(text,error=false){const el=$("notice");el.textContent=text;e
 async function copyText(text){try{await navigator.clipboard.writeText(text);showNotice("Link copiado. Compartilhe com quem vai assistir.");}catch{showNotice("Não foi possível copiar automaticamente. Copie o link exibido.",true)}}
 function signal(data){if(socket&&socket.readyState===WebSocket.OPEN)socket.send(JSON.stringify(data))}
 function connect(nextRole,nextRoom){
- if(socket){socket.onclose=null;socket.close();socket=null}
+ if(socket){const oldSocket=socket;socket=null;oldSocket.close()}
  for(const [id,p] of peers){p.pc.close();peers.delete(id)}
  role=nextRole;room=nextRoom;hostId=null;updateUrl(room);setConnection("Conectando…");
  const protocol=location.protocol==="https:"?"wss:":"ws:";
  socket=new WebSocket(protocol+"//"+location.host+"/ws");
+ const thisSocket=socket;
  socket.addEventListener("open",()=>socket.send(JSON.stringify({type:"join",room,role})));
- socket.addEventListener("message",async(event)=>{let data;try{data=JSON.parse(event.data)}catch{return}try{await handleSignal(data)}catch(err){console.error(err);showNotice("Falha ao negociar a transmissão. Tente entrar novamente.",true)}});
- socket.addEventListener("close",()=>{setConnection("Desconectado");if(role==="host")stopSharing(false)});
- socket.addEventListener("error",()=>showNotice("Não foi possível conectar ao servidor. Tente novamente.",true));
+ socket.addEventListener("message",async(event)=>{if(socket!==thisSocket)return;let data;try{data=JSON.parse(event.data)}catch{return}try{await handleSignal(data)}catch(err){console.error(err);showNotice("Falha ao negociar a transmissão. Tente entrar novamente.",true)}});
+ socket.addEventListener("close",()=>{if(socket!==thisSocket)return;setConnection("Desconectado");if(role==="host")stopSharing(false)});
+ socket.addEventListener("error",()=>{if(socket===thisSocket)showNotice("Não foi possível conectar ao servidor. Tente novamente.",true)});
 }
 function createPeer(peerId,initiator){
  if(peers.has(peerId))return peers.get(peerId);
