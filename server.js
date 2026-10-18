@@ -1,4 +1,5 @@
 const express = require("express");
+const compression = require("compression");
 const http = require("http");
 const path = require("path");
 const crypto = require("crypto");
@@ -6,11 +7,19 @@ const { WebSocketServer, WebSocket } = require("ws");
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 64 * 1024 });
+const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 64 * 1024, perMessageDeflate: false });
 const rooms = new Map();
 const MAX_SHARERS_PER_ROOM = 3;
 
 app.disable("x-powered-by");
+app.use(compression());
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), display-capture=(self)");
+  next();
+});
 app.use(express.static(path.join(__dirname, "public"), { maxAge: 0, setHeaders(res, filePath) { if (/\.(html|js|css)$/.test(filePath)) res.setHeader("Cache-Control", "no-cache"); } }));
 app.get("/healthz", (_req, res) => res.json({ ok: true, maxSimultaneousShares: MAX_SHARERS_PER_ROOM }));
 app.get("/rtc-config", (_req, res) => {
@@ -59,6 +68,8 @@ function relay(room, ws, data) {
 }
 
 wss.on("connection", ws => {
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
   ws.id = crypto.randomUUID();
   ws.room = null;
   ws.role = null;
@@ -120,6 +131,15 @@ wss.on("connection", ws => {
     else broadcastParticipants(room);
   });
 });
+
+const heartbeat = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { ws.terminate(); continue; }
+    ws.isAlive = false;
+    if (ws.readyState === WebSocket.OPEN) ws.ping();
+  }
+}, 30000);
+wss.on("close", () => clearInterval(heartbeat));
 
 const port = process.env.PORT || 3000;
 server.listen(port, "0.0.0.0", () => console.log("ShareRoom online na porta " + port));
