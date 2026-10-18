@@ -32,6 +32,21 @@ function membersFor(room) {
   if (!rooms.has(room)) rooms.set(room, new Map());
   return rooms.get(room);
 }
+function participantList(room) {
+  const members = rooms.get(room);
+  if (!members) return [];
+  return [...members.values()].map(peer => ({
+    id: peer.id,
+    name: peer.displayName || "Participante",
+    role: peer.role
+  }));
+}
+function broadcastParticipants(room) {
+  const members = rooms.get(room);
+  if (!members) return;
+  const participants = participantList(room);
+  for (const peer of members.values()) send(peer, { type: "participant-list", participants });
+}
 function relay(room, ws, data) {
   const members = rooms.get(room);
   if (!members) return;
@@ -47,6 +62,7 @@ wss.on("connection", ws => {
   ws.id = crypto.randomUUID();
   ws.room = null;
   ws.role = null;
+  ws.displayName = "Participante";
 
   ws.on("message", raw => {
     let data;
@@ -57,6 +73,8 @@ wss.on("connection", ws => {
       if (ws.room) return;
       const room = String(data.room || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 48);
       const role = data.role === "host" ? "host" : "viewer";
+      const displayName = String(data.name || "").replace(/[<>\r\n\t]/g, "").trim().slice(0, 32);
+      ws.displayName = displayName || "Participante";
       if (room.length < 3) return send(ws, { type: "error", message: "O código da sala precisa ter pelo menos 3 caracteres." });
 
       const members = membersFor(room);
@@ -74,15 +92,17 @@ wss.on("connection", ws => {
         id: ws.id,
         room,
         role,
+        name: ws.displayName,
         maxSimultaneousShares: MAX_SHARERS_PER_ROOM,
         activeShares: activeSharers + (role === "host" ? 1 : 0)
       });
 
       for (const peer of members.values()) {
         if (peer.id === ws.id) continue;
-        send(ws, { type: "peer-joined", id: peer.id, role: peer.role });
-        send(peer, { type: "peer-joined", id: ws.id, role: ws.role });
+        send(peer, { type: "peer-joined", id: ws.id, role: ws.role, name: ws.displayName });
+        send(ws, { type: "peer-joined", id: peer.id, role: peer.role, name: peer.displayName });
       }
+      broadcastParticipants(room);
       return;
     }
 
@@ -91,11 +111,13 @@ wss.on("connection", ws => {
 
   ws.on("close", () => {
     if (!ws.room) return;
-    const members = rooms.get(ws.room);
+    const room = ws.room;
+    const members = rooms.get(room);
     if (!members) return;
     members.delete(ws.id);
     for (const peer of members.values()) send(peer, { type: "peer-left", id: ws.id, role: ws.role });
-    if (!members.size) rooms.delete(ws.room);
+    if (!members.size) rooms.delete(room);
+    else broadcastParticipants(room);
   });
 });
 
