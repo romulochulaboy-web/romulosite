@@ -14,11 +14,11 @@ const statsTimer = setInterval(monitorConnections, 2500);
 
 function preset() {
   const choices = {
-    auto: { width: 1920, height: 1080, fps: 30, bitrate: 2200000, label: "1080p · 30 FPS" },
-    p1080: { width: 1920, height: 1080, fps: 30, bitrate: 3000000, label: "1080p · 30 FPS" },
-    fluid: { width: 1920, height: 1080, fps: 60, bitrate: 3500000, label: "1080p · 60 FPS" },
-    p720: { width: 1280, height: 720, fps: 30, bitrate: 1500000, label: "720p · 30 FPS" },
-    p480: { width: 854, height: 480, fps: 24, bitrate: 650000, label: "480p · 24 FPS" }
+    auto: { width: 1920, height: 1080, fps: 30, bitrate: 2200000, aggregateBitrate: 4200000, label: "1080p · 30 FPS" },
+    p1080: { width: 1920, height: 1080, fps: 30, bitrate: 3000000, aggregateBitrate: 5000000, label: "1080p · 30 FPS" },
+    fluid: { width: 1920, height: 1080, fps: 60, bitrate: 3500000, aggregateBitrate: 5000000, label: "1080p · 60 FPS" },
+    p720: { width: 1280, height: 720, fps: 30, bitrate: 1500000, aggregateBitrate: 3200000, label: "720p · 30 FPS" },
+    p480: { width: 854, height: 480, fps: 24, bitrate: 650000, aggregateBitrate: 1800000, label: "480p · 24 FPS" }
   };
   return choices[qualitySelect.value] || choices.auto;
 }
@@ -138,13 +138,19 @@ function createPeer(id, peerRole, initiator) {
   if (initiator) makeOffer(id, entry, false);
   return entry;
 }
+function perPeerBitrate() {
+  const outgoing = [...peers.values()].filter(item => item.pc.connectionState !== "closed" && item.pc.getSenders().some(sender => sender.track && sender.track.kind === "video")).length;
+  const quality = preset();
+  return Math.max(250000, Math.min(quality.bitrate, quality.aggregateBitrate / Math.max(1, outgoing)));
+}
 async function applyBitrate(entry, target = null) {
   try {
     const sender = entry.pc.getSenders().find(item => item.track && item.track.kind === "video");
     if (!sender) return;
     const params = sender.getParameters();
     params.encodings = params.encodings && params.encodings.length ? params.encodings : [{}];
-    const wanted = Math.max(250000, Math.min(preset().bitrate, target || entry.currentBitrate || preset().bitrate));
+    const ceiling = perPeerBitrate();
+    const wanted = Math.max(250000, Math.min(ceiling, target || entry.currentBitrate || ceiling));
     params.encodings[0].maxBitrate = Math.round(wanted);
     params.encodings[0].maxFramerate = preset().fps;
     params.degradationPreference = "maintain-framerate";
@@ -274,7 +280,7 @@ async function monitorConnections() {
       });
       entry.lastLoss = loss; entry.lastRtt = rtt;
       if (localStream && entry.pc.getSenders().some(sender => sender.track && sender.track.kind === "video")) {
-        const ceiling = preset().bitrate;
+        const ceiling = perPeerBitrate();
         let target = entry.currentBitrate || ceiling;
         if (loss > 0.08 || rtt > 0.55) target = Math.max(350000, target * 0.68);
         else if (loss > 0.035 || rtt > 0.32) target = Math.max(450000, target * 0.84);
