@@ -11,7 +11,7 @@ const rooms = new Map();
 const MAX_SHARERS_PER_ROOM = 3;
 
 app.disable("x-powered-by");
-app.use(express.static(path.join(__dirname, "public"), { maxAge: process.env.NODE_ENV === "production" ? "1h" : 0 }));
+app.use(express.static(path.join(__dirname, "public"), { maxAge: 0, setHeaders(res, filePath) { if (/\\.(html|js|css)$/.test(filePath)) res.setHeader("Cache-Control", "no-cache"); } }));
 app.get("/healthz", (_req, res) => res.json({ ok: true, maxSimultaneousShares: MAX_SHARERS_PER_ROOM }));
 
 function send(ws, payload) {
