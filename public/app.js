@@ -1,11 +1,12 @@
 (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
-const roomInput=$("roomInput"), remoteVideo=$("remoteVideo"), videoStage=$("videoStage"), linkText=$("linkText");
+const roomInput=$("roomInput"), remoteVideo=$("remoteVideo"), videoStage=$("videoStage"), linkText=$("linkText"), qualitySelect=$("qualitySelect");
 const watchBtn=$("watchBtn"), shareBtn=$("shareBtn");
 const ICE_CONFIG={iceServers:[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]}]};
 let socket=null,room="",role=null,localStream=null,hostId=null;
 const peers=new Map();
+function qualityPreset(){const presets={auto:{width:1920,height:1080,fps:30,bitrate:3500000,label:"1080P · 30 FPS"},p1080:{width:1920,height:1080,fps:30,bitrate:5000000,label:"1080P · 30 FPS"},p720:{width:1280,height:720,fps:30,bitrate:2500000,label:"720P · 30 FPS"},fluid:{width:1920,height:1080,fps:60,bitrate:6000000,label:"1080P · 60 FPS"},p480:{width:854,height:480,fps:24,bitrate:1200000,label:"480P · 24 FPS"}};return presets[qualitySelect?.value]||presets.auto}
 function normalizeRoom(value){return String(value||"").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,48)}
 function currentRoom(){const value=normalizeRoom(roomInput.value);if(value.length<3){showNotice("Use um código de sala com pelo menos 3 caracteres.",true);return ""}roomInput.value=value;return value}
 function roomUrl(){const u=new URL(location.href);u.searchParams.set("sala",normalizeRoom(roomInput.value)||"rrzin");return u.toString()}
@@ -32,7 +33,7 @@ function createPeer(peerId,initiator){
  pc.onicecandidate=e=>{if(e.candidate)signal({type:"ice",to:peerId,candidate:e.candidate})};
  pc.onconnectionstatechange=()=>{if(pc.connectionState==="connected"){setConnection("Transmissão conectada",true);$("streamStatus").textContent="Recebendo transmissão"}if(["failed","closed"].includes(pc.connectionState))dropPeer(peerId)};
  pc.ontrack=e=>{if(role!=="viewer")return;remoteVideo.srcObject=e.streams[0];remoteVideo.play().catch(()=>{});videoStage.classList.add("has-video");$("videoOverlay").classList.remove("hidden");$("videoRoomLabel").textContent="#"+room;$("viewerTitle").textContent="Transmissão ao vivo";$("viewerSubtitle").textContent="Sala "+room;$("streamStatus").textContent="Recebendo transmissão";$("qualityBadge").textContent="WEBRTC";setConnection("Conectado",true);updateResolution()};
- if(role==="host"&&localStream){localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));for(const sender of pc.getSenders()){if(sender.track&&sender.track.kind==="video"){const p=sender.getParameters();p.encodings=[{...(p.encodings&&p.encodings[0]),maxBitrate:3500000,maxFramerate:30}];sender.setParameters(p).catch(()=>{})}}}
+ if(role==="host"&&localStream){localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));for(const sender of pc.getSenders()){if(sender.track&&sender.track.kind==="video"){const p=sender.getParameters();const preset=qualityPreset();p.encodings=[{...(p.encodings&&p.encodings[0]),maxBitrate:preset.bitrate,maxFramerate:preset.fps}];sender.setParameters(p).catch(()=>{})}}}
  if(initiator)makeOffer(peerId,entry);return entry
 }
 async function makeOffer(id,entry){try{await entry.pc.setLocalDescription(await entry.pc.createOffer());signal({type:"offer",to:id,description:entry.pc.localDescription})}catch(e){console.error(e);showNotice("Não foi possível iniciar a conexão com um espectador.",true)}}
@@ -56,9 +57,10 @@ async function startSharing(){
  const selectedRoom=currentRoom();if(!selectedRoom)return;
  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){showNotice("Seu navegador não oferece captura de tela. Use Chrome ou Edge atualizado.",true);return}
  try{
-  localStream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30,max:30},displaySurface:"monitor"},audio:true});
-  const track=localStream.getVideoTracks()[0];if(track){track.contentHint="motion";track.addEventListener("ended",()=>stopSharing(true),{once:true})}
-  remoteVideo.srcObject=localStream;remoteVideo.muted=true;videoStage.classList.add("has-video");$("videoOverlay").classList.remove("hidden");$("videoRoomLabel").textContent="#"+selectedRoom;$("viewerTitle").textContent="Sua tela (prévia local)";$("viewerSubtitle").textContent="Você está compartilhando";$("streamStatus").textContent="Transmitindo sua tela";$("qualityBadge").textContent="ATÉ 30 FPS";$("resolutionLabel").textContent="Transmissão ativa";connect("host",selectedRoom);showNotice("Tela compartilhada. Envie o link da sala para seus amigos.")
+  const preset=qualityPreset();
+  localStream=await navigator.mediaDevices.getDisplayMedia({video:{width:{max:preset.width},height:{max:preset.height},frameRate:{ideal:preset.fps,max:preset.fps},displaySurface:"monitor"},audio:true});
+  const track=localStream.getVideoTracks()[0];if(track){track.contentHint=qualitySelect.value==="fluid"?"motion":"detail";track.addEventListener("ended",()=>stopSharing(true),{once:true})}
+  remoteVideo.srcObject=localStream;remoteVideo.muted=true;videoStage.classList.add("has-video");$("videoOverlay").classList.remove("hidden");$("videoRoomLabel").textContent="#"+selectedRoom;$("viewerTitle").textContent="Sua tela (prévia local)";$("viewerSubtitle").textContent="Você está compartilhando";$("streamStatus").textContent="Transmitindo sua tela";$("qualityBadge").textContent=preset.label;$("resolutionLabel").textContent="Transmissão ativa";connect("host",selectedRoom);showNotice("Tela compartilhada. Envie o link da sala para seus amigos.")
  }catch(err){if(err.name!=="NotAllowedError")showNotice("Não foi possível iniciar o compartilhamento. Verifique as permissões do navegador.",true)}
 }
 function stopSharing(notify=true){
