@@ -18,7 +18,7 @@ const statsTimer = setInterval(monitorConnections, 4000);
 
 function preset() {
   const choices = {
-    auto: { width: 1920, height: 1080, fps: 30, bitrate: 2200000, aggregateBitrate: 4200000, label: "1080p · 30 FPS" },
+    auto: { width: 1280, height: 720, fps: 30, bitrate: 1500000, aggregateBitrate: 3200000, label: "720p · 30 FPS (otimizada)" },
     p1080: { width: 1920, height: 1080, fps: 30, bitrate: 3000000, aggregateBitrate: 5000000, label: "1080p · 30 FPS" },
     fluid: { width: 1920, height: 1080, fps: 60, bitrate: 3500000, aggregateBitrate: 5000000, label: "1080p · 60 FPS" },
     p720: { width: 1280, height: 720, fps: 30, bitrate: 1500000, aggregateBitrate: 3200000, label: "720p · 30 FPS" },
@@ -309,7 +309,7 @@ async function startSharing() {
   try {
     const quality = preset();
     // Start with the most compatible request; apply preferred quality after the native picker succeeds.
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const stream = await navigator.mediaDevices.getDisplayMedia({\n      video: { frameRate: { ideal: quality.fps, max: quality.fps } },\n      audio: false\n    });
     const capturedTrack = stream.getVideoTracks()[0];
     if (capturedTrack) {
       try {
@@ -334,11 +334,11 @@ async function startSharing() {
     $("qualityBadge").textContent = quality.label;
     connect("host", targetRoom);
     shareBtn.disabled = true; shareBtn.textContent = "Compartilhando…";
-    notice("Compartilhamento iniciado. Envie o link da sala.");
+    notice("Compartilhamento iniciado. Para compartilhar somente um aplicativo, escolha a opção “Janela” na janela nativa do Edge. A escolha é controlada pelo navegador.");
   } catch (error) {
     console.warn("Falha ao iniciar compartilhamento de tela:", error);
     if (error && error.name === "NotAllowedError") {
-      notice("O Edge não iniciou a captura. Clique novamente em Compartilhar minha tela e, na janela nativa do Edge, selecione uma tela, janela ou aba e confirme. Se você fechou essa janela ou clicou em Cancelar, tente outra vez. O navegador exige essa confirmação por segurança.", true);
+      notice("O Edge bloqueou ou cancelou a captura. Clique novamente e, na janela nativa, escolha “Janela” para compartilhar apenas um aplicativo e confirme em Compartilhar. O site não pode selecionar a janela por você.", true);
     } else if (error && error.name === "InvalidStateError") {
       notice("Para compartilhar, mantenha esta aba do ShareRoom aberta e clique diretamente em “Compartilhar minha tela”.", true);
     } else if (error && error.name === "NotReadableError") {
