@@ -1,6 +1,6 @@
 # ShareRoom
 
-Aplicação web para compartilhar a tela entre navegadores usando WebRTC e WebSocket.
+Aplicação web para compartilhar telas entre navegadores usando WebRTC e WebSocket. Cada sala aceita até três compartilhamentos de tela simultâneos.
 
 ## Executar localmente
 
@@ -25,4 +25,4 @@ O arquivo `render.yaml` também contém a configuração básica do serviço.
 
 ## Limites importantes
 
-A transmissão usa WebRTC com STUN público. Algumas redes exigem TURN para conectar. O anfitrião envia uma cópia do vídeo por espectador, então o upload aumenta com cada pessoa. Esta primeira versão não tem autenticação ou senha de sala; não compartilhe conteúdo sensível. Um serviço hospedado gratuito pode entrar em suspensão quando inativo.
+A transmissão usa WebRTC com STUN público e permite até três compartilhamentos simultâneos por sala. Algumas redes exigem TURN para conectar. Cada compartilhador envia vídeo diretamente a cada participante conectado, então o upload e o processamento aumentam conforme o número de pessoas e telas. Os perfis de qualidade ajustam a captura e o bitrate, mas a resolução/FPS efetivos dependem do navegador, hardware e conexão. A aplicação não tem autenticação ou senha de sala; não compartilhe conteúdo sensível. Um serviço hospedado gratuito pode entrar em suspensão quando inativo.
