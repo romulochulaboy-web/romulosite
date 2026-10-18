@@ -6,9 +6,38 @@
   const count = document.getElementById("participantCount");
   if (!NativeWebSocket || !nameInput || !list || !count) return;
 
-  try { nameInput.value = localStorage.getItem("shareroom-display-name") || ""; } catch {}
+  const NAME_KEY = "shareroom-display-name";
+  function makeAutomaticName() {
+    const bytes = new Uint8Array(2);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else {
+      bytes[0] = Math.floor(Math.random() * 256);
+      bytes[1] = Math.floor(Math.random() * 256);
+    }
+    return "Visitante-" + Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+
+  // Each browser gets a persistent automatic display name; no signup or typing required.
+  let savedName = "";
+  try { savedName = (localStorage.getItem(NAME_KEY) || "").trim(); } catch {}
+  if (!savedName) {
+    savedName = makeAutomaticName();
+    try { localStorage.setItem(NAME_KEY, savedName); } catch {}
+  }
+  nameInput.value = savedName;
+  nameInput.placeholder = "Nome automático da sua sessão";
   nameInput.addEventListener("input", () => {
-    try { localStorage.setItem("shareroom-display-name", nameInput.value.slice(0, 32)); } catch {}
+    const cleaned = nameInput.value.replace(/[<>\\r\\n\\t]/g, "").trim().slice(0, 32);
+    try {
+      if (cleaned) localStorage.setItem(NAME_KEY, cleaned);
+      else localStorage.setItem(NAME_KEY, makeAutomaticName());
+    } catch {}
+  });
+  nameInput.addEventListener("blur", () => {
+    if (!nameInput.value.trim()) {
+      nameInput.value = makeAutomaticName();
+      try { localStorage.setItem(NAME_KEY, nameInput.value); } catch {}
+    }
   });
 
   let myId = null;
@@ -65,7 +94,7 @@
       try {
         const data = JSON.parse(value);
         if (data.type === "join") {
-          data.name = (nameInput.value || "").replace(/[<>\r\n\t]/g, "").trim().slice(0, 32) || "Visitante";
+          data.name = (nameInput.value || savedName || makeAutomaticName()).replace(/[<>\\r\\n\\t]/g, "").trim().slice(0, 32) || savedName;
           outgoing = JSON.stringify(data);
         }
       } catch {}
