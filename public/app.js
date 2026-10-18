@@ -34,7 +34,7 @@ function addTile(id,title,stream,isLocal=false){
 }
 function addLocalTile(){if(localStream)addTile("local","Sua tela (você)",localStream,true)}
 function removeLocalTile(){const t=$("localTile");if(t)t.remove()}
-function updateRoomStatus(){setShareCount([...peers.values()].filter(p=>p.role==="host"&&p.pc.connectionState==="connected").length+(localStream?1:0))}
+function updateRoomStatus(){setShareCount([...peers.values()].filter(p=>p.role==="host"&&p.pc.connectionState!=="closed").length+(localStream?1:0))}
 function connect(nextRole,nextRoom){
  const old=socket;socket=null;if(old){old.onclose=null;old.close()}
  for(const [id,p] of peers){p.pc.close();peers.delete(id)}
@@ -62,12 +62,12 @@ async function flushCandidates(entry){for(const c of entry.candidates.splice(0))
 async function handleSignal(d){
  switch(d.type){
  case "joined":myId=d.id;setConnection("Sala conectada",true);setShareCount(d.activeShares||0);$("viewerTitle").textContent=role==="host"?"Compartilhando sua tela":"Pronto para assistir";$("viewerSubtitle").textContent="Sala #"+room;notice("Sala conectada. Até 3 pessoas podem compartilhar simultaneamente.");break;
- case "peer-joined":if(myId&&shouldConnect(d.role)){createPeer(d.id,d.role,myId.localeCompare(d.id)<0);if(d.role==="host")setShareCount(Math.min(MAX_SHARES,shareCount+1))}break;
+ case "peer-joined":if(myId&&shouldConnect(d.role)){createPeer(d.id,d.role,myId.localeCompare(d.id)<0);updateRoomStatus()}break;
  case "offer":{const entry=createPeer(d.from,"host",false);if(!entry)break;await entry.pc.setRemoteDescription(d.description);await flushCandidates(entry);await entry.pc.setLocalDescription(await entry.pc.createAnswer());signal({type:"answer",to:d.from,description:entry.pc.localDescription});break}
  case "answer":{const entry=peers.get(d.from);if(entry&&entry.pc.signalingState==="have-local-offer"){await entry.pc.setRemoteDescription(d.description);await flushCandidates(entry);await applyBitrate(entry)}break}
  case "ice":{const entry=peers.get(d.from);if(entry&&d.candidate){if(entry.pc.remoteDescription){try{await entry.pc.addIceCandidate(d.candidate)}catch(e){console.debug("ICE candidate ignorado",e)}}else entry.candidates.push(d.candidate)}break}
- case "peer-left":dropPeer(d.id);clearRemoteTile(d.id);if(d.role==="host")setShareCount(Math.max(0,shareCount-1));setConnection("Sala conectada",true);notice(d.role==="host"?"Uma transmissão foi encerrada.":"Um participante saiu da sala.");break;
- case "host-stopped":clearRemoteTile(d.from);setShareCount(Math.max(0,shareCount-1));break;
+ case "peer-left":dropPeer(d.id);clearRemoteTile(d.id);updateRoomStatus();setConnection("Sala conectada",true);notice(d.role==="host"?"Uma transmissão foi encerrada.":"Um participante saiu da sala.");break;
+ case "host-stopped":clearRemoteTile(d.from);break;
  case "error":notice(d.message||"Ocorreu um erro.",true);setConnection("Atenção");if(d.code==="SHARE_LIMIT"){if(localStream)stopSharing(false,false);if(socket){const failed=socket;socket=null;failed.close()}role="viewer";setShareCount(MAX_SHARES)}break;
  }
 }
@@ -77,7 +77,7 @@ async function startSharing(){
  const r=currentRoom();if(!r)return;if(!navigator.mediaDevices?.getDisplayMedia){notice("Use uma versão atualizada do Chrome ou Edge.",true);return}
  try{
   const q=preset(),stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:q.width,max:q.width},height:{ideal:q.height,max:q.height},frameRate:{ideal:q.fps,max:q.fps},displaySurface:"monitor"},audio:true});
-  localStream=stream;const track=stream.getVideoTracks()[0];if(track){track.contentHint=qualitySelect.value==="fluid"?"motion":"detail";track.addEventListener("ended",()=>stopSharing(true,true),{once:true)}
+  localStream=stream;const track=stream.getVideoTracks()[0];if(track){track.contentHint=qualitySelect.value==="fluid"?"motion":"detail";track.addEventListener("ended",()=>stopSharing(true,true),{once:true})}
   addLocalTile();$("viewerTitle").textContent="Compartilhando sua tela";$("viewerSubtitle").textContent="A tela será enviada aos participantes";$("qualityBadge").textContent=q.label;
   connect("host",r);shareBtn.disabled=true;shareBtn.textContent="Compartilhando…";notice("Compartilhamento iniciado. Envie o link da sala.");
  }catch(err){if(err.name!=="NotAllowedError")notice("Não foi possível iniciar o compartilhamento. Confira as permissões do navegador.",true)}
