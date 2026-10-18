@@ -4,10 +4,13 @@ const $ = id => document.getElementById(id);
 const roomInput = $("roomInput"), linkText = $("linkText"), qualitySelect = $("qualitySelect");
 const watchBtn = $("watchBtn"), shareBtn = $("shareBtn"), streamGrid = $("streamGrid");
 const MAX_SHARES = 3;
-const ICE_CONFIG = { iceServers: [
+let ICE_CONFIG = { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" }
 ] };
+const iceConfigReady = fetch("/rtc-config", { cache: "no-store" }).then(response => response.ok ? response.json() : null).then(config => {
+  if (config && Array.isArray(config.iceServers) && config.iceServers.length) ICE_CONFIG = { iceServers: config.iceServers };
+}).catch(() => {});
 let socket = null, room = "", role = "viewer", localStream = null, myId = null, shareCount = 0;
 const peers = new Map(), remoteTiles = new Map();
 const statsTimer = setInterval(monitorConnections, 2500);
@@ -76,12 +79,13 @@ function updateRoomStatus() {
   const remoteSharers = [...peers.values()].filter(p => p.role === "host" && p.pc.connectionState !== "closed").length;
   setShareCount(remoteSharers + (localStream ? 1 : 0));
 }
-function connect(nextRole, nextRoom) {
+async function connect(nextRole, nextRoom) {
   const old = socket; socket = null;
   if (old) { old.onclose = null; old.close(); }
   for (const [id, peer] of peers) { if (peer.recoveryTimer) clearTimeout(peer.recoveryTimer); peer.pc.close(); peers.delete(id); }
   for (const id of [...remoteTiles.keys()]) clearRemoteTile(id);
   myId = null; role = nextRole; room = nextRoom; updateUrl(room); setConnection("Conectando…");
+  await iceConfigReady;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(protocol + "//" + location.host + "/ws"); socket = ws;
   ws.addEventListener("open", () => ws.send(JSON.stringify({ type: "join", room, role })));
