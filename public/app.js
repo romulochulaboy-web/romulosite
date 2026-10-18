@@ -211,6 +211,7 @@ async function handleSignal(data) {
     case "offer": {
       const entry = createPeer(data.from, "host", false);
       if (!entry) break;
+      if (entry.recoveryTimer) { clearTimeout(entry.recoveryTimer); entry.recoveryTimer = null; }
       if (entry.pc.signalingState !== "stable") {
         try { await entry.pc.setLocalDescription({ type: "rollback" }); } catch {}
       }
