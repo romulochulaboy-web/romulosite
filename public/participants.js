@@ -65,7 +65,7 @@
       try {
         const data = JSON.parse(value);
         if (data.type === "join") {
-          data.name = (nameInput.value || "").replace(/[<>\\r\\n\\t]/g, "").trim().slice(0, 32) || "Visitante";
+          data.name = (nameInput.value || "").replace(/[<>\r\n\t]/g, "").trim().slice(0, 32) || "Visitante";
           outgoing = JSON.stringify(data);
         }
       } catch {}
