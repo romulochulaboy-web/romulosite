@@ -13,7 +13,8 @@ const iceConfigReady = fetch("/rtc-config", { cache: "no-store" }).then(response
 }).catch(() => {});
 let socket = null, room = "", role = "viewer", localStream = null, myId = null, shareCount = 0;
 const peers = new Map(), remoteTiles = new Map();
-const statsTimer = setInterval(monitorConnections, 2500);
+let monitoringStats = false;
+const statsTimer = setInterval(monitorConnections, 4000);
 
 function preset() {
   const choices = {
@@ -272,13 +273,16 @@ function dropPeer(id) {
   }
 }
 async function monitorConnections() {
+  if (monitoringStats || peers.size === 0) return;
+  monitoringStats = true;
+  try {
   for (const [id, entry] of peers) {
     if (entry.pc.connectionState !== "connected") continue;
     try {
       const stats = await entry.pc.getStats();
       let loss = 0, rtt = 0;
       stats.forEach(report => {
-        if (report.type === "remote-inbound-rtp" && report.kind === "video") {
+        if (report.type === "remote-inbound-rtp" && (report.kind === "video" || report.mediaType === "video")) {
           loss = Math.max(loss, report.fractionLost || 0);
           if (typeof report.roundTripTime === "number") rtt = Math.max(rtt, report.roundTripTime);
         }
@@ -293,6 +297,9 @@ async function monitorConnections() {
         if (Math.abs(target - (entry.currentBitrate || ceiling)) > 100000) await applyBitrate(entry, target);
       }
     } catch (error) { console.debug("Monitoramento WebRTC indisponível", error); }
+  }
+  } finally {
+    monitoringStats = false;
   }
 }
 async function startSharing() {
