@@ -26,3 +26,15 @@ O arquivo `render.yaml` também contém a configuração básica do serviço.
 ## Limites importantes
 
 A transmissão usa WebRTC com STUN público e permite até três compartilhamentos simultâneos por sala. Algumas redes exigem TURN para conectar. Cada compartilhador envia vídeo diretamente a cada participante conectado, então o upload e o processamento aumentam conforme o número de pessoas e telas. Os perfis de qualidade ajustam a captura e o bitrate, mas a resolução/FPS efetivos dependem do navegador, hardware e conexão. A aplicação não tem autenticação ou senha de sala; não compartilhe conteúdo sensível. Um serviço hospedado gratuito pode entrar em suspensão quando inativo.
+
+## Estabilidade de conexão (opcional)
+
+O servidor disponibiliza `/rtc-config` e usa STUN por padrão. Para ajudar usuários atrás de NATs/firewalls restritivos, configure um serviço TURN no painel do Render com estas variáveis de ambiente:
+
+- `TURN_URL`: URL(s) TURN, por exemplo `turn:turn.example.com:3478` (várias URLs separadas por vírgula).
+- `TURN_USERNAME`: usuário TURN.
+- `TURN_CREDENTIAL`: senha/credencial TURN.
+
+Use credenciais de um provedor TURN confiável; não coloque senhas no código público. Sem TURN configurado, algumas redes ainda podem impedir a conexão direta.
+
+A aplicação também ajusta o bitrate dinamicamente com base em perda de pacotes/latência e limita o orçamento total de upload por compartilhador para reduzir congelamentos quando há vários espectadores. Isso pode reduzir a nitidez em conexões lentas para favorecer a fluidez.
