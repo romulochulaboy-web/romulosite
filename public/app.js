@@ -308,10 +308,20 @@ async function startSharing() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { notice("Use uma versão atualizada do Chrome ou Edge.", true); return; }
   try {
     const quality = preset();
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: quality.width, max: quality.width }, height: { ideal: quality.height, max: quality.height }, frameRate: { ideal: quality.fps, max: quality.fps } },
-      audio: false
-    });
+    // Start with the most compatible request; apply preferred quality after the native picker succeeds.
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const capturedTrack = stream.getVideoTracks()[0];
+    if (capturedTrack) {
+      try {
+        await capturedTrack.applyConstraints({
+          width: { ideal: quality.width },
+          height: { ideal: quality.height },
+          frameRate: { ideal: quality.fps }
+        });
+      } catch (constraintError) {
+        console.debug("Mantendo a qualidade padrão da captura:", constraintError);
+      }
+    }
     localStream = stream;
     const track = stream.getVideoTracks()[0];
     if (track) {
@@ -328,7 +338,7 @@ async function startSharing() {
   } catch (error) {
     console.warn("Falha ao iniciar compartilhamento de tela:", error);
     if (error && error.name === "NotAllowedError") {
-      notice("O Edge bloqueou ou o compartilhamento foi cancelado. Clique no ícone ao lado do endereço do site > Permissões do site, redefina permissões bloqueadas e tente novamente. Na janela de compartilhamento, selecione uma tela ou janela e confirme.", true);
+      notice("O Edge não iniciou a captura. Clique novamente em Compartilhar minha tela e, na janela nativa do Edge, selecione uma tela, janela ou aba e confirme. Se você fechou essa janela ou clicou em Cancelar, tente outra vez. O navegador exige essa confirmação por segurança.", true);
     } else if (error && error.name === "InvalidStateError") {
       notice("Para compartilhar, mantenha esta aba do ShareRoom aberta e clique diretamente em “Compartilhar minha tela”.", true);
     } else if (error && error.name === "NotReadableError") {
@@ -338,7 +348,7 @@ async function startSharing() {
     } else if (error && error.name === "TypeError") {
       notice("O navegador rejeitou as opções de captura. Atualize o Edge e tente novamente.", true);
     } else {
-      notice("Não foi possível iniciar o compartilhamento (" + ((error && error.name) || "erro desconhecido") + "). Verifique as permissões do Edge e tente novamente.", true);
+      notice("Não foi possível iniciar o compartilhamento (" + ((error && error.name) || "erro desconhecido") + "). Tente novamente pelo botão e conclua a seleção na janela do Edge.", true);
     }
   }
 }
