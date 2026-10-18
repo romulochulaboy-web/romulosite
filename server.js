@@ -13,6 +13,17 @@ const MAX_SHARERS_PER_ROOM = 3;
 app.disable("x-powered-by");
 app.use(express.static(path.join(__dirname, "public"), { maxAge: 0, setHeaders(res, filePath) { if (/\.(html|js|css)$/.test(filePath)) res.setHeader("Cache-Control", "no-cache"); } }));
 app.get("/healthz", (_req, res) => res.json({ ok: true, maxSimultaneousShares: MAX_SHARERS_PER_ROOM }));
+app.get("/rtc-config", (_req, res) => {
+  const iceServers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" }
+  ];
+  if (process.env.TURN_URL && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    iceServers.push({ urls: process.env.TURN_URL.split(",").map(value => value.trim()), username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ iceServers });
+});
 
 function send(ws, payload) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
