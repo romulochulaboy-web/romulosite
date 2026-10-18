@@ -167,7 +167,7 @@ async function makeOffer(id, entry, iceRestart = false) {
     const offer = await entry.pc.createOffer(iceRestart ? { iceRestart: true } : undefined);
     await entry.pc.setLocalDescription(offer);
     signal({ type: "offer", to: id, description: entry.pc.localDescription });
-  } catch (error) { console.warn("Não foi possível criar oferta WebRTC", error); }
+  } catch (error) { if (iceRestart) entry.recovering = false; console.warn("Não foi possível criar oferta WebRTC", error); }
 }
 async function flushCandidates(entry) {
   for (const candidate of entry.candidates.splice(0)) {
@@ -180,7 +180,7 @@ async function recoverPeer(id, entry) {
   if (!entry.initiator) {
     // Only the deterministic offerer restarts ICE, avoiding simultaneous renegotiation.
     entry.recoveryTimer = setTimeout(() => {
-      if (entry.pc.connectionState === "failed" && peers.get(id) === entry) {
+      if (["failed", "disconnected"].includes(entry.pc.connectionState) && peers.get(id) === entry) {
         dropPeer(id); clearRemoteTile(id); updateRoomStatus();
         notice("Uma conexão caiu. Reentre na sala se a tela não voltar.", true);
       }
