@@ -23,6 +23,14 @@ Acesse http://localhost:3000/?sala=rrzin em duas janelas. Para compartilhar, use
 
 O arquivo `render.yaml` também contém a configuração básica do serviço.
 
+## Otimizações de desempenho
+
+- Compressão HTTP para HTML, CSS e JavaScript.
+- Fontes do sistema para evitar requisições extras a serviços de terceiros.
+- Monitoramento adaptativo do WebRTC com proteção contra ciclos de medição sobrepostos.
+- Heartbeat WebSocket para remover conexões abandonadas e atualizar a presença da sala.
+- Sinalização WebSocket sem compressão por mensagem, reduzindo trabalho extra em mensagens pequenas.
+
 ## Limites importantes
 
 A transmissão usa WebRTC com STUN público e permite até três compartilhamentos simultâneos por sala. Algumas redes exigem TURN para conectar. Cada compartilhador envia vídeo diretamente a cada participante conectado, então o upload e o processamento aumentam conforme o número de pessoas e telas. Os perfis de qualidade ajustam a captura e o bitrate, mas a resolução/FPS efetivos dependem do navegador, hardware e conexão. A aplicação não tem autenticação ou senha de sala; não compartilhe conteúdo sensível. Um serviço hospedado gratuito pode entrar em suspensão quando inativo.
