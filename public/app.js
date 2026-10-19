@@ -309,7 +309,10 @@ async function startSharing() {
   try {
     const quality = preset();
     // Start with the most compatible request; apply preferred quality after the native picker succeeds.
-    const stream = await navigator.mediaDevices.getDisplayMedia({\n      video: { frameRate: { ideal: quality.fps, max: quality.fps } },\n      audio: false\n    });
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: quality.fps, max: quality.fps } },
+      audio: false
+    });
     const capturedTrack = stream.getVideoTracks()[0];
     if (capturedTrack) {
       try {
