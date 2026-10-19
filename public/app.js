@@ -328,8 +328,11 @@ async function startSharing() {
     // Start with the most compatible request; apply preferred quality after the native picker succeeds.
     const wantsAudio = Boolean(includeAudio && includeAudio.checked);
     const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: quality.fps, max: quality.fps } },
-      audio: wantsAudio
+      video: { displaySurface: "window", frameRate: { ideal: quality.fps, max: quality.fps } },
+      audio: wantsAudio,
+      // Prefer audio from the selected application window and explicitly exclude system audio.
+      windowAudio: wantsAudio ? "window" : "exclude",
+      systemAudio: "exclude"
     });
     const capturedTrack = stream.getVideoTracks()[0];
     if (capturedTrack) {
