@@ -1,7 +1,7 @@
 (() => {
 "use strict";
 const $ = id => document.getElementById(id);
-const roomInput = $("roomInput"), linkText = $("linkText"), qualitySelect = $("qualitySelect");
+const roomInput = $("roomInput"), linkText = $("linkText"), qualitySelect = $("qualitySelect"), includeAudio = $("includeAudio");
 const watchBtn = $("watchBtn"), shareBtn = $("shareBtn"), streamGrid = $("streamGrid");
 const MAX_SHARES = 3;
 let ICE_CONFIG = { iceServers: [
@@ -60,7 +60,16 @@ function addTile(id, title, stream, isLocal = false) {
     const meta = document.createElement("div"); meta.className = "stream-meta";
     const name = document.createElement("strong"); name.className = "stream-name"; name.textContent = title;
     const resolution = document.createElement("span"); resolution.className = "stream-resolution"; resolution.textContent = "Conectando…";
-    meta.append(name, resolution); tile.append(video, meta); streamGrid.append(tile);
+    const audioButton = document.createElement("button");
+    audioButton.type = "button"; audioButton.className = "stream-audio-button";
+    audioButton.textContent = "Ativar áudio"; audioButton.hidden = isLocal;
+    audioButton.addEventListener("click", () => {
+      video.muted = !video.muted;
+      video.dataset.audioEnabled = String(!video.muted);
+      audioButton.textContent = video.muted ? "Ativar áudio" : "Silenciar áudio";
+      video.play().catch(() => {});
+    });
+    meta.append(name, resolution, audioButton); tile.append(video, meta); streamGrid.append(tile);
     if (!isLocal) remoteTiles.set(id, tile);
     video.addEventListener("loadedmetadata", () => {
       if (video.videoWidth && video.videoHeight) resolution.textContent = video.videoWidth + " × " + video.videoHeight;
@@ -69,8 +78,15 @@ function addTile(id, title, stream, isLocal = false) {
   }
   const video = tile.querySelector("video");
   if (video.srcObject !== stream) video.srcObject = stream;
+  if (isLocal) video.muted = true;
+  else if (video.dataset.audioEnabled !== "true") video.muted = true;
+  const audioButton = tile.querySelector(".stream-audio-button");
+  if (audioButton && !isLocal) {
+    const hasAudio = stream.getAudioTracks().some(track => track.readyState === "live");
+    audioButton.disabled = !hasAudio;
+    audioButton.textContent = hasAudio ? (video.muted ? "Ativar áudio" : "Silenciar áudio") : "Sem áudio compartilhado";
+  }
   video.play().catch(() => {});
-  video.muted = true;
   tile.querySelector(".stream-name").textContent = title;
   return tile;
 }
@@ -139,6 +155,7 @@ function createPeer(id, peerRole, initiator) {
     }
   } else {
     pc.addTransceiver("video", { direction: "recvonly" });
+    pc.addTransceiver("audio", { direction: "recvonly" });
   }
   if (initiator) makeOffer(id, entry, false);
   return entry;
@@ -309,9 +326,10 @@ async function startSharing() {
   try {
     const quality = preset();
     // Start with the most compatible request; apply preferred quality after the native picker succeeds.
+    const wantsAudio = Boolean(includeAudio && includeAudio.checked);
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: { ideal: quality.fps, max: quality.fps } },
-      audio: false
+      audio: wantsAudio
     });
     const capturedTrack = stream.getVideoTracks()[0];
     if (capturedTrack) {
@@ -337,7 +355,13 @@ async function startSharing() {
     $("qualityBadge").textContent = quality.label;
     connect("host", targetRoom);
     shareBtn.disabled = true; shareBtn.textContent = "Compartilhando…";
-    notice("Compartilhamento iniciado. Para compartilhar somente um aplicativo, escolha a opção “Janela” na janela nativa do Edge. A escolha é controlada pelo navegador.");
+    if (wantsAudio && stream.getAudioTracks().length === 0) {
+      notice("Tela compartilhada, mas o Edge não disponibilizou áudio para essa janela. Isso depende do tipo de janela e do suporte do navegador.", true);
+    } else if (wantsAudio) {
+      notice("Tela e áudio da superfície selecionada compartilhados. Nenhum microfone foi solicitado. Quem assistir deverá clicar em “Ativar áudio”.");
+    } else {
+      notice("Compartilhamento iniciado sem áudio. Para compartilhar somente um aplicativo, escolha “Janela” no seletor nativo do Edge.");
+    }
   } catch (error) {
     console.warn("Falha ao iniciar compartilhamento de tela:", error);
     if (error && error.name === "NotAllowedError") {
