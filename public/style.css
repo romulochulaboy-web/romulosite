@@ -111,3 +111,63 @@ button, .button, .fullscreen-button, .icon-button {
   .live-pill { padding: 6px 8px; }
   .participants-head h2 { font-size: 15px; }
 }
+
+
+/* Responsividade ampla: celulares Android/iOS, tablets e orientacoes variadas */
+*, *::before, *::after { box-sizing: border-box; }
+html { width: 100%; overflow-x: clip; }
+body { width: 100%; overflow-x: clip; margin-left: 0; margin-right: 0; }
+img, video, canvas, svg { max-width: 100%; }
+input, select, button { max-width: 100%; }
+.layout, .workspace, .room-card, .participants-card, .viewer-card,
+.stream-grid, .stream-tile, .viewer-head, .viewer-title { min-width: 0; }
+.layout { width: min(1120px, 92vw); }
+.workspace { min-width: 0; }
+.intro h1 { overflow-wrap: anywhere; }
+.room-input-wrap, .room-input-wrap input, .share-link, #linkText { min-width: 0; }
+.room-input-wrap input { width: 100%; }
+.stream-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.stream-tile video { display: block; max-width: 100%; }
+@media (max-width: 850px) {
+  .layout { width: min(680px, 92vw); grid-template-columns: minmax(0, 1fr); }
+  .workspace { width: 100%; }
+  .intro, .workspace { min-width: 0; }
+}
+@media (max-width: 600px) {
+  .layout { width: 92%; }
+  .topbar { padding-left: max(4vw, env(safe-area-inset-left, 0px)); padding-right: max(4vw, env(safe-area-inset-right, 0px)); }
+  .room-input-wrap { display: flex; min-width: 0; }
+  .room-input-wrap input { flex: 1 1 auto; }
+  .stream-grid { grid-template-columns: minmax(0, 1fr); }
+  .stream-meta { min-width: 0; }
+  .stream-name { min-width: 0; overflow-wrap: anywhere; }
+  .viewer-title strong, .viewer-title small { overflow-wrap: anywhere; }
+  .quality-badge { max-width: 34vw; overflow-wrap: anywhere; text-align: center; }
+  .viewer-tools { flex-shrink: 0; }
+  .video-stage { width: 100%; }
+  footer { width: 92%; }
+}
+@media (max-width: 380px) {
+  .topbar { align-items: flex-start; }
+  .brand { min-width: 0; }
+  .top-status { font-size: 9px; }
+  .intro h1 { font-size: clamp(32px, 10vw, 40px); }
+  .room-card, .participants-card { padding-left: 12px; padding-right: 12px; }
+  .viewer-card { padding-left: 8px; padding-right: 8px; }
+  .viewer-head { gap: 7px; }
+  .viewer-title { gap: 7px; }
+  .screen-icon { flex: 0 0 30px; width: 30px; height: 30px; }
+  .viewer-title strong { font-size: 11px; }
+  .quality-badge { font-size: 7px; padding: 5px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .topbar { min-height: 52px; height: auto; padding-top: 8px; padding-bottom: 8px; }
+  .layout { margin-top: 16px; margin-bottom: 20px; gap: 18px; }
+  .intro { padding-top: 0; }
+  .intro h1 { font-size: clamp(30px, 7vh, 42px); }
+  .video-stage video, .stream-tile video { max-height: 68vh; }
+  footer { padding-top: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+}
+@supports not (overflow: clip) {
+  html, body { overflow-x: hidden; }
+}
