@@ -410,9 +410,33 @@ shareBtn.addEventListener("click", startSharing);
 $("stopShareBtn").addEventListener("click", () => { if (localStream) stopSharing(true, true); });
 $("copyRoom").addEventListener("click", () => copyText(roomUrl()));
 $("copyLink").addEventListener("click", () => copyText(roomUrl()));
-$("fullscreenBtn").addEventListener("click", () => {
-  const video = streamGrid.querySelector(".stream-tile video");
-  if (video && video.requestFullscreen) video.requestFullscreen().catch(() => {});
+$("fullscreenBtn").addEventListener("click", async () => {
+  const tile = streamGrid.querySelector(".stream-tile");
+  const video = tile && tile.querySelector("video");
+  if (!video) {
+    notice("Entre na sala e aguarde uma tela compartilhada para expandi-la.", true);
+    return;
+  }
+  // iOS Safari não oferece requestFullscreen() para todos os elementos.
+  // O modo de tela cheia nativo do vídeo é a alternativa compatível no iPhone.
+  try {
+    if (typeof video.webkitEnterFullscreen === "function") {
+      video.webkitEnterFullscreen();
+      return;
+    }
+    if (typeof video.requestFullscreen === "function") {
+      await video.requestFullscreen();
+      return;
+    }
+    if (typeof tile.requestFullscreen === "function") {
+      await tile.requestFullscreen();
+      return;
+    }
+    notice("A tela cheia não é suportada por este navegador. Toque duas vezes no vídeo ou use o botão de tela cheia do próprio player, se disponível.", true);
+  } catch (error) {
+    console.warn("Não foi possível expandir o vídeo:", error);
+    notice("Não foi possível abrir a tela cheia neste navegador. Tente tocar no vídeo para abrir os controles do player.", true);
+  }
 });
 roomInput.addEventListener("input", () => {
   const clean = normalizeRoom(roomInput.value);
