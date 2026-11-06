@@ -12,7 +12,7 @@ const iceConfigReady = fetch("/rtc-config", { cache: "no-store" }).then(response
   if (config && Array.isArray(config.iceServers) && config.iceServers.length) ICE_CONFIG = { iceServers: config.iceServers };
 }).catch(() => {});
 let socket = null, room = "", role = "viewer", localStream = null, myId = null, shareCount = 0;
-const peers = new Map(), remoteTiles = new Map();
+const peers = new Map(), remoteTiles = new Map(), remoteStreams = new Map();
 let monitoringStats = false;
 const statsTimer = setInterval(monitorConnections, 4000);
 
@@ -47,7 +47,7 @@ function setShareCount(value) {
   $("shareCount").textContent = shareCount + " / " + MAX_SHARES + " telas compartilhadas";
   $("shareCount").classList.toggle("limit-reached", shareCount >= MAX_SHARES);
 }
-function clearRemoteTile(id) { const tile = remoteTiles.get(id); if (tile) { tile.remove(); remoteTiles.delete(id); } }
+function clearRemoteTile(id) { const tile = remoteTiles.get(id); if (tile) { tile.remove(); remoteTiles.delete(id); } remoteStreams.delete(id); }
 function addTile(id, title, stream, isLocal = false) {
   let tile = isLocal ? $("localTile") : remoteTiles.get(id);
   if (!tile) {
@@ -142,9 +142,22 @@ function createPeer(id, peerRole, initiator) {
   pc.ontrack = event => {
     if (entry.role !== "host") return;
     let stream = event.streams && event.streams[0];
-    if (!stream) stream = new MediaStream([event.track]);
+    if (stream) {
+      remoteStreams.set(id, stream);
+    } else {
+      stream = remoteStreams.get(id) || new MediaStream();
+      if (!stream.getTracks().some(track => track.id === event.track.id)) stream.addTrack(event.track);
+      remoteStreams.set(id, stream);
+    }
     addTile(id, "Tela compartilhada", stream);
-    event.track.addEventListener("ended", () => clearRemoteTile(id), { once: true });
+    if (event.track.kind === "video") {
+      event.track.addEventListener("ended", () => clearRemoteTile(id), { once: true });
+    } else {
+      event.track.addEventListener("ended", () => {
+        const current = remoteStreams.get(id);
+        if (current) addTile(id, "Tela compartilhada", current);
+      }, { once: true });
+    }
   };
   if (localStream) {
     for (const track of localStream.getTracks()) {
@@ -330,9 +343,10 @@ async function startSharing() {
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: { displaySurface: "window", frameRate: { ideal: quality.fps, max: quality.fps } },
       audio: wantsAudio,
-      // Prefer audio from the selected application window and explicitly exclude system audio.
+      // Ask the browser for application audio from the selected window.
+      // Keep system audio eligible as a fallback on platforms without per-window capture.
       windowAudio: wantsAudio ? "window" : "exclude",
-      systemAudio: "exclude"
+      systemAudio: wantsAudio ? "include" : "exclude"
     });
     const capturedTrack = stream.getVideoTracks()[0];
     if (capturedTrack) {
@@ -359,9 +373,9 @@ async function startSharing() {
     connect("host", targetRoom);
     shareBtn.disabled = true; shareBtn.textContent = "Compartilhando…";
     if (wantsAudio && stream.getAudioTracks().length === 0) {
-      notice("Tela compartilhada, mas o Edge não disponibilizou áudio para essa janela. Isso depende do tipo de janela e do suporte do navegador.", true);
+      notice("A tela foi compartilhada, mas o navegador não retornou áudio. No seletor do Edge, habilite também a opção de compartilhar o áudio do aplicativo/janela. Se ela não aparecer, essa versão ou plataforma não oferece captura de áudio dessa janela.", true);
     } else if (wantsAudio) {
-      notice("Tela e áudio da superfície selecionada compartilhados. Nenhum microfone foi solicitado. Quem assistir deverá clicar em “Ativar áudio”.");
+      notice("Tela e áudio recebidos do seletor do navegador. Nenhum microfone foi solicitado. Quem assistir deverá clicar em “Ativar áudio”.");
     } else {
       notice("Compartilhamento iniciado sem áudio. Para compartilhar somente um aplicativo, escolha “Janela” no seletor nativo do Edge.");
     }
