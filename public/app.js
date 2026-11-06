@@ -335,18 +335,17 @@ async function monitorConnections() {
 async function startSharing() {
   if (localStream) { notice("Sua tela já está sendo compartilhada."); return; }
   const targetRoom = currentRoom(); if (!targetRoom) return;
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { notice("Use uma versão atualizada do Chrome ou Edge.", true); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { notice("Este navegador não disponibiliza compartilhamento de tela. Tente uma versão atualizada de um navegador compatível para desktop.", true); return; }
   try {
     const quality = preset();
     // Start with the most compatible request; apply preferred quality after the native picker succeeds.
     const wantsAudio = Boolean(includeAudio && includeAudio.checked);
+    // Use only the standardized cross-browser options here. Browser-specific
+    // hints such as windowAudio/systemAudio are not implemented consistently
+    // (notably Firefox and Safari), and must not be required for capture to start.
     const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { displaySurface: "window", frameRate: { ideal: quality.fps, max: quality.fps } },
-      audio: wantsAudio,
-      // Ask the browser for application audio from the selected window.
-      // Keep system audio eligible as a fallback on platforms without per-window capture.
-      windowAudio: wantsAudio ? "window" : "exclude",
-      systemAudio: wantsAudio ? "include" : "exclude"
+      video: { frameRate: { ideal: quality.fps, max: quality.fps } },
+      audio: wantsAudio
     });
     const capturedTrack = stream.getVideoTracks()[0];
     if (capturedTrack) {
@@ -373,11 +372,11 @@ async function startSharing() {
     connect("host", targetRoom);
     shareBtn.disabled = true; shareBtn.textContent = "Compartilhando…";
     if (wantsAudio && stream.getAudioTracks().length === 0) {
-      notice("A tela foi compartilhada, mas o navegador não retornou áudio. No seletor do Edge, habilite também a opção de compartilhar o áudio do aplicativo/janela. Se ela não aparecer, essa versão ou plataforma não oferece captura de áudio dessa janela.", true);
+      notice("A tela foi compartilhada, mas o navegador não disponibilizou uma faixa de áudio. Verifique se o seletor oferece a opção de compartilhar áudio. Alguns navegadores e sistemas não permitem capturar o som da janela; nesse caso, a transmissão continuará somente com vídeo.", true);
     } else if (wantsAudio) {
       notice("Tela e áudio recebidos do seletor do navegador. Nenhum microfone foi solicitado. Quem assistir deverá clicar em “Ativar áudio”.");
     } else {
-      notice("Compartilhamento iniciado sem áudio. Para compartilhar somente um aplicativo, escolha “Janela” no seletor nativo do Edge.");
+      notice("Compartilhamento iniciado sem áudio. Se quiser som, encerre e inicie novamente com “Compartilhar áudio da janela” ativado; escolha uma fonte que ofereça áudio no seletor do navegador.");
     }
   } catch (error) {
     console.warn("Falha ao iniciar compartilhamento de tela:", error);
