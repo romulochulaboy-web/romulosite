@@ -11,7 +11,7 @@ let ICE_CONFIG = { iceServers: [
 const iceConfigReady = fetch("/rtc-config", { cache: "no-store" }).then(response => response.ok ? response.json() : null).then(config => {
   if (config && Array.isArray(config.iceServers) && config.iceServers.length) ICE_CONFIG = { iceServers: config.iceServers };
 }).catch(() => {});
-let socket = null, room = "", role = "viewer", localStream = null, myId = null, shareCount = 0;
+let socket = null, room = "", role = "viewer", localStream = null, myId = null, shareCount = 0, primaryTileId = null;
 const peers = new Map(), remoteTiles = new Map(), remoteStreams = new Map();
 let monitoringStats = false;
 const statsTimer = setInterval(monitorConnections, 4000);
@@ -47,7 +47,34 @@ function setShareCount(value) {
   $("shareCount").textContent = shareCount + " / " + MAX_SHARES + " telas compartilhadas";
   $("shareCount").classList.toggle("limit-reached", shareCount >= MAX_SHARES);
 }
-function clearRemoteTile(id) { const tile = remoteTiles.get(id); if (tile) { tile.remove(); remoteTiles.delete(id); } remoteStreams.delete(id); }
+function clearRemoteTile(id) {
+  const tile = remoteTiles.get(id);
+  if (tile) { tile.remove(); remoteTiles.delete(id); }
+  remoteStreams.delete(id);
+  if (primaryTileId === id) primaryTileId = null;
+  selectPrimaryTile(primaryTileId);
+}
+function selectPrimaryTile(id) {
+  const tiles = [...streamGrid.querySelectorAll(".stream-tile")];
+  if (!tiles.length) {
+    primaryTileId = null;
+    streamGrid.classList.remove("has-primary");
+    return;
+  }
+  const selected = tiles.find(tile => tile.dataset.peer === id) || tiles.find(tile => tile.dataset.peer === primaryTileId) || tiles[0];
+  primaryTileId = selected.dataset.peer;
+  streamGrid.classList.add("has-primary");
+  tiles.forEach(tile => {
+    const active = tile === selected;
+    tile.classList.toggle("is-primary", active);
+    const button = tile.querySelector(".stream-primary-button");
+    if (button) {
+      button.textContent = active ? "Tela principal" : "Definir como principal";
+      button.disabled = active;
+      button.setAttribute("aria-pressed", String(active));
+    }
+  });
+}
 function addTile(id, title, stream, isLocal = false) {
   let tile = isLocal ? $("localTile") : remoteTiles.get(id);
   if (!tile) {
@@ -63,13 +90,18 @@ function addTile(id, title, stream, isLocal = false) {
     const audioButton = document.createElement("button");
     audioButton.type = "button"; audioButton.className = "stream-audio-button";
     audioButton.textContent = "Ativar áudio"; audioButton.hidden = isLocal;
+    const primaryButton = document.createElement("button");
+    primaryButton.type = "button";
+    primaryButton.className = "stream-primary-button";
+    primaryButton.textContent = "Definir como principal";
+    primaryButton.addEventListener("click", () => selectPrimaryTile(isLocal ? "local" : id));
     audioButton.addEventListener("click", () => {
       video.muted = !video.muted;
       video.dataset.audioEnabled = String(!video.muted);
       audioButton.textContent = video.muted ? "Ativar áudio" : "Silenciar áudio";
       video.play().catch(() => {});
     });
-    meta.append(name, resolution, audioButton); tile.append(video, meta); streamGrid.append(tile);
+    meta.append(name, resolution, audioButton, primaryButton); tile.append(video, meta); streamGrid.append(tile);
     if (!isLocal) remoteTiles.set(id, tile);
     video.addEventListener("loadedmetadata", () => {
       if (video.videoWidth && video.videoHeight) resolution.textContent = video.videoWidth + " × " + video.videoHeight;
@@ -88,10 +120,16 @@ function addTile(id, title, stream, isLocal = false) {
   }
   video.play().catch(() => {});
   tile.querySelector(".stream-name").textContent = title;
+  selectPrimaryTile(primaryTileId || (isLocal ? "local" : id));
   return tile;
 }
 function addLocalTile() { if (localStream) addTile("local", "Sua tela (você)", localStream, true); }
-function removeLocalTile() { const tile = $("localTile"); if (tile) tile.remove(); }
+function removeLocalTile() {
+  const tile = $("localTile");
+  if (tile) tile.remove();
+  if (primaryTileId === "local") primaryTileId = null;
+  selectPrimaryTile(primaryTileId);
+}
 function updateRoomStatus() {
   const remoteSharers = [...peers.values()].filter(p => p.role === "host" && p.pc.connectionState !== "closed").length;
   setShareCount(remoteSharers + (localStream ? 1 : 0));
@@ -424,7 +462,7 @@ $("stopShareBtn").addEventListener("click", () => { if (localStream) stopSharing
 $("copyRoom").addEventListener("click", () => copyText(roomUrl()));
 $("copyLink").addEventListener("click", () => copyText(roomUrl()));
 $("fullscreenBtn").addEventListener("click", async () => {
-  const tile = streamGrid.querySelector(".stream-tile");
+  const tile = streamGrid.querySelector(".stream-tile.is-primary") || streamGrid.querySelector(".stream-tile");
   const video = tile && tile.querySelector("video");
   if (!video) {
     notice("Entre na sala e aguarde uma tela compartilhada para expandi-la.", true);
