@@ -171,3 +171,45 @@ input, select, button { max-width: 100%; }
 @supports not (overflow: clip) {
   html, body { overflow-x: hidden; }
 }
+
+
+/* Selecao de tela principal: as demais transmissoes permanecem acessiveis */
+.stream-grid.has-primary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.stream-grid.has-primary .stream-tile.is-primary {
+  grid-column: 1 / -1;
+  border-color: #8b6cff;
+  box-shadow: 0 0 0 1px #8b6cff30, 0 10px 30px #0003;
+}
+.stream-grid.has-primary .stream-tile.is-primary video {
+  aspect-ratio: 16 / 9;
+  max-height: min(72vh, 760px);
+}
+.stream-primary-button {
+  flex: 0 0 auto;
+  min-height: 29px;
+  border: 1px solid #514477;
+  border-radius: 7px;
+  background: #211d30;
+  color: #cbbcff;
+  padding: 6px 9px;
+  font: 600 9px Inter, ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
+.stream-primary-button:hover { background: #302747; border-color: #8b6cff; }
+.stream-primary-button:disabled {
+  background: #342b50;
+  border-color: #8b6cff;
+  color: #fff;
+  cursor: default;
+  opacity: 1;
+}
+.stream-tile:not(.is-primary) .stream-primary-button { color: #d4caff; }
+@media (max-width: 650px) {
+  .stream-grid.has-primary { grid-template-columns: minmax(0, 1fr); }
+  .stream-grid.has-primary .stream-tile.is-primary { grid-column: 1; }
+  .stream-grid.has-primary .stream-tile.is-primary video { max-height: 70vh; }
+  .stream-primary-button { min-height: 36px; font-size: 10px; }
+}
