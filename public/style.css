@@ -213,3 +213,35 @@ input, select, button { max-width: 100%; }
   .stream-grid.has-primary .stream-tile.is-primary video { max-height: 70vh; }
   .stream-primary-button { min-height: 36px; font-size: 10px; }
 }
+
+
+/* Interface simplificada: ações principais em primeiro plano */
+.simple-room-card .card-head { margin-bottom: 20px; }
+.simple-help { margin: 8px 0 0; color: #9296aa; font-size: 11px; line-height: 1.55; }
+.simple-button-row { grid-template-columns: 1fr 1.25fr; margin-top: 20px; }
+.quick-steps { display: grid; gap: 17px; margin-top: 34px; max-width: 330px; }
+.quick-step { display: flex; align-items: center; gap: 12px; }
+.quick-step > span { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border: 1px solid #514474; border-radius: 10px; color: #c8baff; background: #211c32; font-size: 12px; font-weight: 700; }
+.quick-step p { display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.quick-step strong { color: #e9e8f3; font-size: 12px; }
+.quick-step small { color: #9296aa; font-size: 11px; }
+.advanced-settings { margin-top: 18px; border-top: 1px solid #2b2d3a; border-bottom: 1px solid #2b2d3a; }
+.advanced-settings summary { padding: 14px 2px; color: #bdb4e8; font-size: 11px; font-weight: 600; cursor: pointer; list-style-position: inside; }
+.advanced-settings summary:hover { color: #fff; }
+.advanced-content { padding: 2px 0 14px; }
+.advanced-content .name-label { margin-top: 8px; }
+.advanced-content .audio-option { margin-bottom: 0 !important; }
+.simple-room-card .divider { margin-top: 19px; }
+.simple-room-card .privacy-note { line-height: 1.6; }
+@media (max-width: 850px) {
+  .quick-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; gap: 10px; margin-top: 24px; }
+  .quick-step { align-items: flex-start; gap: 8px; }
+  .quick-step p { min-width: 0; }
+}
+@media (max-width: 600px) {
+  .quick-steps { grid-template-columns: 1fr; gap: 12px; }
+  .quick-step { align-items: center; }
+  .simple-button-row { grid-template-columns: 1fr; }
+  .simple-button-row .button { min-height: 49px; }
+  .advanced-settings summary { padding: 16px 2px; }
+}
