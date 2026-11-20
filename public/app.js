@@ -147,18 +147,29 @@ async function connect(nextRole, nextRoom, automatic = false) {
   if (generation !== connectGeneration) return;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(protocol + "//" + location.host + "/ws"); socket = ws;
+  let messageQueue = Promise.resolve();
+  const connectionTimer = setTimeout(() => {
+    if (socket === ws && ws.readyState === WebSocket.CONNECTING) ws.close();
+  }, 12000);
   ws.addEventListener("open", () => {
+    clearTimeout(connectionTimer);
     if (socket !== ws || generation !== connectGeneration) return;
     reconnectAttempts = 0;
     ws.send(JSON.stringify({ type: "join", room, role }));
   });
-  ws.addEventListener("message", async event => {
+  ws.addEventListener("message", event => {
     if (socket !== ws) return;
-    let data; try { data = JSON.parse(event.data); } catch { return; }
-    try { await handleSignal(data); }
-    catch (error) { console.error(error); notice("Falha ao negociar a transmissão. Tente reconectar à sala.", true); }
+    messageQueue = messageQueue.then(async () => {
+      if (socket !== ws) return;
+      let data; try { data = JSON.parse(event.data); } catch { return; }
+      await handleSignal(data);
+    }).catch(error => {
+      console.error(error);
+      notice("Falha ao negociar a transmissão. O sistema tentará recuperar a conexão.", true);
+    });
   });
   ws.addEventListener("close", () => {
+    clearTimeout(connectionTimer);
     if (socket !== ws || generation !== connectGeneration) return;
     setConnection("Conexão perdida. Reconectando…");
     const delay = Math.min(15000, 1000 * Math.pow(2, Math.min(reconnectAttempts++, 4)));
