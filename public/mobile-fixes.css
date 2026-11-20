@@ -1,0 +1,76 @@
+/* Ajustes complementares para mobile e tela expandida */
+html { min-height:100%; }
+body { min-height:100vh; min-height:100dvh; }
+@media (max-width: 700px) {
+  .layout { width:min(94vw, 680px); margin:22px auto 30px; gap:22px; }
+  .topbar { padding-left:max(4vw, env(safe-area-inset-left)); padding-right:max(4vw, env(safe-area-inset-right)); }
+  .room-card, .participants-card, .viewer-card { min-width:0; }
+  .button, button, input, select { touch-action:manipulation; }
+  .stream-grid, .stream-grid.has-primary { grid-template-columns:minmax(0,1fr); }
+  .stream-grid.has-primary .stream-tile.is-primary { grid-column:1; }
+  .stream-tile video { width:100%; max-height:68vh; height:auto; object-fit:contain; }
+  .stream-meta { flex-wrap:wrap; }
+  .stream-primary-button, .stream-audio-button { min-height:38px; }
+}
+@media (max-width: 390px) {
+  .layout { width:94vw; }
+  .room-card { padding:14px 12px; }
+  .viewer-card { padding:10px 8px; }
+  .viewer-head { gap:6px; }
+  .viewer-title { min-width:0; }
+  .viewer-tools { flex-shrink:0; }
+  .quality-badge { max-width:27vw; overflow-wrap:anywhere; }
+  .top-status { max-width:46%; font-size:9px; }
+}
+@media (orientation:landscape) and (max-height:560px) {
+  .layout { margin-top:12px; margin-bottom:18px; }
+  .stream-tile video { max-height:62vh; }
+}
+/* Expansao por CSS funciona como fallback no Safari iOS */
+.stream-tile.mobile-expanded {
+  position:fixed !important;
+  inset:0 !important;
+  z-index:99999 !important;
+  width:100vw !important;
+  height:100vh !important;
+  height:100dvh !important;
+  max-width:none !important;
+  max-height:none !important;
+  margin:0 !important;
+  padding:calc(env(safe-area-inset-top) + 54px) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 12px) env(safe-area-inset-left) !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:#050609 !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:center !important;
+  overflow:auto !important;
+}
+.stream-tile.mobile-expanded video {
+  width:100% !important;
+  height:100% !important;
+  max-height:none !important;
+  flex:1 1 auto !important;
+  aspect-ratio:auto !important;
+  object-fit:contain !important;
+}
+.stream-tile.mobile-expanded .stream-meta {
+  flex:0 0 auto;
+  padding:12px 4px calc(8px + env(safe-area-inset-bottom));
+}
+.mobile-expand-close {
+  position:fixed;
+  z-index:100001;
+  top:calc(env(safe-area-inset-top) + 10px);
+  right:calc(env(safe-area-inset-right) + 12px);
+  min-width:42px;
+  min-height:42px;
+  border:1px solid #514477;
+  border-radius:12px;
+  background:#211d30;
+  color:#fff;
+  font-size:22px;
+  cursor:pointer;
+  box-shadow:0 4px 22px #0008;
+}
+body.mobile-view-expanded { overflow:hidden !important; overscroll-behavior:none; }
