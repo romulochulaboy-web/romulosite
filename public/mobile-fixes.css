@@ -74,3 +74,53 @@ body { min-height:100vh; min-height:100dvh; }
   box-shadow:0 4px 22px #0008;
 }
 body.mobile-view-expanded { overflow:hidden !important; overscroll-behavior:none; }
+
+
+/* Orientacao adaptativa: acompanha a rotacao natural do aparelho.
+   Nao usa screen.orientation.lock(), portanto respeita o bloqueio do usuario. */
+@media (max-width: 900px) and (orientation: landscape) {
+  html, body { min-height: 100%; }
+  .topbar {
+    min-height: 48px;
+    height: auto;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+  .layout {
+    width: min(96vw, 1180px);
+    margin-top: 12px;
+    margin-bottom: 16px;
+    gap: 14px;
+  }
+  .intro h1 { font-size: clamp(27px, 5vw, 38px); }
+  .intro-copy { font-size: 12px; line-height: 1.45; }
+  .quick-steps { margin-top: 14px; gap: 8px; }
+  .quick-step > span { flex-basis: 26px; width: 26px; height: 26px; }
+  .room-card, .participants-card, .viewer-card { padding: 12px; }
+  .stream-grid, .stream-grid.has-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stream-grid.has-primary .stream-tile.is-primary { grid-column: 1 / -1; }
+  .stream-tile video,
+  .stream-grid.has-primary .stream-tile.is-primary video {
+    max-height: 58dvh;
+    width: 100%;
+    object-fit: contain;
+  }
+  .stream-meta { gap: 6px; }
+  footer { padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 900px) and (orientation: portrait) {
+  .stream-tile video { max-height: 68dvh; }
+  .stream-grid, .stream-grid.has-primary { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .stream-tile.mobile-expanded {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+  }
+  .stream-tile.mobile-expanded video {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+}
