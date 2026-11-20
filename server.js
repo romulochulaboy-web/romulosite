@@ -121,7 +121,7 @@ wss.on("connection", ws => {
       return;
     }
 
-    if (ws.room && ["offer", "answer", "ice", "host-stopped"].includes(data.type)) relay(ws.room, ws, data);
+    if (ws.room && ["offer", "answer", "ice", "host-stopped", "ice-restart-request", "peer-reset"].includes(data.type)) relay(ws.room, ws, data);
   });
 
   ws.on("close", () => {
