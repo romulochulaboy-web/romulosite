@@ -459,6 +459,10 @@ function stopSharing(notifyPeers = true, reconnectViewer = true) {
 watchBtn.addEventListener("click", () => {
   const targetRoom = currentRoom(); if (!targetRoom) return;
   if (localStream) { notice("Você já está compartilhando; também pode receber outras telas."); return; }
+  if (socket && socket.readyState === WebSocket.OPEN && role === "viewer" && room === targetRoom) {
+    notice("Você já está conectado à sala e recebendo as atualizações em tempo real.");
+    return;
+  }
   connect("viewer", targetRoom);
   $("viewerTitle").textContent = "Conectando à sala";
   $("viewerSubtitle").textContent = "Sala #" + targetRoom;
@@ -516,4 +520,7 @@ window.addEventListener("beforeunload", () => {
 });
 roomInput.value = normalizeRoom(new URLSearchParams(location.search).get("sala") || "rrzin");
 updateUrl(roomInput.value); setShareCount(0);
+// Entrar como espectador assim que o link da sala for aberto. Assim a lista
+// de participantes e os compartilhamentos aparecem sem exigir um clique extra.
+connect("viewer", roomInput.value);
 })();
