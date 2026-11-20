@@ -14,6 +14,7 @@ const iceConfigReady = fetch("/rtc-config", { cache: "no-store" }).then(response
 let socket = null, room = "", role = "viewer", localStream = null, myId = null, shareCount = 0, primaryTileId = null;
 const peers = new Map(), remoteTiles = new Map(), remoteStreams = new Map();
 let monitoringStats = false;
+let reconnectTimer = null, reconnectAttempts = 0, connectGeneration = 0;
 const statsTimer = setInterval(monitorConnections, 8000);
 
 function preset() {
@@ -134,23 +135,37 @@ function updateRoomStatus() {
   const remoteSharers = [...peers.values()].filter(p => p.role === "host" && p.pc.connectionState !== "closed").length;
   setShareCount(remoteSharers + (localStream ? 1 : 0));
 }
-async function connect(nextRole, nextRoom) {
+async function connect(nextRole, nextRoom, automatic = false) {
+  const generation = ++connectGeneration;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   const old = socket; socket = null;
   if (old) { old.onclose = null; old.close(); }
   for (const [id, peer] of peers) { if (peer.recoveryTimer) clearTimeout(peer.recoveryTimer); peer.pc.close(); peers.delete(id); }
   for (const id of [...remoteTiles.keys()]) clearRemoteTile(id);
   myId = null; role = nextRole; room = nextRoom; updateUrl(room); setConnection("Conectando…");
   await iceConfigReady;
+  if (generation !== connectGeneration) return;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(protocol + "//" + location.host + "/ws"); socket = ws;
-  ws.addEventListener("open", () => ws.send(JSON.stringify({ type: "join", room, role })));
+  ws.addEventListener("open", () => {
+    if (socket !== ws || generation !== connectGeneration) return;
+    reconnectAttempts = 0;
+    ws.send(JSON.stringify({ type: "join", room, role }));
+  });
   ws.addEventListener("message", async event => {
     if (socket !== ws) return;
     let data; try { data = JSON.parse(event.data); } catch { return; }
     try { await handleSignal(data); }
     catch (error) { console.error(error); notice("Falha ao negociar a transmissão. Tente reconectar à sala.", true); }
   });
-  ws.addEventListener("close", () => { if (socket === ws) setConnection("Desconectado"); });
+  ws.addEventListener("close", () => {
+    if (socket !== ws || generation !== connectGeneration) return;
+    setConnection("Conexão perdida. Reconectando…");
+    const delay = Math.min(15000, 1000 * Math.pow(2, Math.min(reconnectAttempts++, 4)));
+    reconnectTimer = setTimeout(() => {
+      if (socket === ws && room) connect(role, room, true);
+    }, delay);
+  });
   ws.addEventListener("error", () => { if (socket === ws) notice("Não foi possível conectar ao servidor. Tente novamente.", true); });
 }
 function shouldConnect(peerRole) { return role === "host" || peerRole === "host"; }
@@ -158,7 +173,7 @@ function createPeer(id, peerRole, initiator) {
   if (peers.has(id)) return peers.get(id);
   if (!shouldConnect(peerRole)) return null;
   const pc = new RTCPeerConnection(ICE_CONFIG);
-  const entry = { pc, role: peerRole, candidates: [], initiator, currentBitrate: preset().bitrate, lastLoss: 0, lastRtt: 0, recoveryTimer: null, recovering: false };
+  const entry = { pc, role: peerRole, candidates: [], initiator, currentBitrate: preset().bitrate, lastLoss: 0, lastRtt: 0, recoveryTimer: null, recovering: false, recoveryAttempts: 0 };
   peers.set(id, entry);
   pc.onicecandidate = event => { if (event.candidate) signal({ type: "ice", to: id, candidate: event.candidate }); };
   pc.onconnectionstatechange = () => {
@@ -176,7 +191,12 @@ function createPeer(id, peerRole, initiator) {
   };
   pc.oniceconnectionstatechange = () => {
     if (pc.iceConnectionState === "failed") recoverPeer(id, entry);
+    else if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      entry.recoveryAttempts = 0;
+      if (entry.recoveryTimer) { clearTimeout(entry.recoveryTimer); entry.recoveryTimer = null; }
+    }
   };
+  pc.onicecandidateerror = event => console.debug("ICE candidate error", event.errorCode, event.errorText);
   pc.ontrack = event => {
     if (entry.role !== "host") return;
     let stream = event.streams && event.streams[0];
@@ -246,24 +266,51 @@ async function flushCandidates(entry) {
 async function recoverPeer(id, entry) {
   if (!peers.has(id) || peers.get(id) !== entry || entry.recovering || entry.pc.connectionState === "closed") return;
   if (entry.recoveryTimer) { clearTimeout(entry.recoveryTimer); entry.recoveryTimer = null; }
+  entry.recovering = true;
+  entry.recoveryAttempts = (entry.recoveryAttempts || 0) + 1;
+
   if (!entry.initiator) {
-    // Only the deterministic offerer restarts ICE, avoiding simultaneous renegotiation.
+    // The deterministic offerer owns renegotiation. Ask it to restart ICE.
+    signal({ type: "ice-restart-request", to: id });
     entry.recoveryTimer = setTimeout(() => {
-      if (["failed", "disconnected"].includes(entry.pc.connectionState) && peers.get(id) === entry) {
-        dropPeer(id); clearRemoteTile(id); updateRoomStatus();
-        notice("Uma conexão caiu. Reentre na sala se a tela não voltar.", true);
+      if (peers.get(id) !== entry || entry.pc.connectionState === "connected") return;
+      entry.recovering = false;
+      if (entry.recoveryAttempts >= 3) {
+        dropPeer(id);
+        clearRemoteTile(id);
+        updateRoomStatus();
+        notice("A conexão desta tela não respondeu à recuperação. O sistema continuará tentando quando a outra ponta voltar.", true);
       }
-    }, 9000);
+    }, 7000);
     return;
   }
-  entry.recovering = true;
+
   try {
-    if (entry.pc.signalingState !== "stable") {
-      entry.pc.setLocalDescription({ type: "rollback" }).catch(() => {});
+    if (entry.recoveryAttempts <= 2) {
+      if (entry.pc.signalingState !== "stable") {
+        try { await entry.pc.setLocalDescription({ type: "rollback" }); } catch {}
+      }
+      entry.pc.restartIce();
+      await makeOffer(id, entry, true);
+      setConnection("Recuperando transmissão…");
+      entry.recoveryTimer = setTimeout(() => {
+        if (peers.get(id) === entry && entry.pc.connectionState !== "connected") {
+          entry.recovering = false;
+          recoverPeer(id, entry);
+        }
+      }, 8000);
+      return;
     }
-    entry.pc.restartIce();
-    await makeOffer(id, entry, true);
-    setConnection("Recuperando transmissão…");
+
+    // ICE restart did not recover: recreate the peer connection from scratch.
+    signal({ type: "peer-reset", to: id });
+    dropPeer(id);
+    clearRemoteTile(id);
+    const replacement = createPeer(id, entry.role, true);
+    if (replacement) {
+      replacement.recoveryAttempts = 0;
+      setConnection("Reconectando transmissão…");
+    }
   } catch (error) {
     console.warn("Recuperação de conexão falhou", error);
     entry.recovering = false;
@@ -308,6 +355,22 @@ async function handleSignal(data) {
         await applyBitrate(entry);
         entry.recovering = false;
       }
+      break;
+    }
+    case "ice-restart-request": {
+      const entry = peers.get(data.from);
+      if (entry && entry.initiator && !entry.recovering) {
+        entry.recovering = false;
+        recoverPeer(data.from, entry);
+      }
+      break;
+    }
+    case "peer-reset": {
+      const previous = peers.get(data.from);
+      if (previous) dropPeer(data.from);
+      clearRemoteTile(data.from);
+      const remoteRole = role === "host" ? "viewer" : "host";
+      createPeer(data.from, remoteRole, false);
       break;
     }
     case "ice": {
@@ -513,8 +576,14 @@ qualitySelect.addEventListener("change", async () => {
   for (const entry of peers.values()) await applyBitrate(entry, quality.bitrate);
   $("qualityBadge").textContent = quality.label; notice("Preferência de qualidade atualizada.");
 });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && room && (!socket || socket.readyState === WebSocket.CLOSED)) {
+    connect(role, room, true);
+  }
+});
 window.addEventListener("beforeunload", () => {
   clearInterval(statsTimer);
+  if (reconnectTimer) clearTimeout(reconnectTimer);
   for (const entry of peers.values()) { if (entry.recoveryTimer) clearTimeout(entry.recoveryTimer); entry.pc.close(); }
   if (socket) socket.close();
 });
