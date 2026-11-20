@@ -92,8 +92,33 @@ wss.on("connection", ws => {
       ws.displayName = displayName || "Participante";
       if (room.length < 3) return send(ws, { type: "error", message: "O código da sala precisa ter pelo menos 3 caracteres." });
 
+      const requestedId = String(data.clientId || "");
+      const clientId = /^[a-zA-Z0-9_-]{12,64}$/.test(requestedId) ? requestedId : ws.id;
+      ws.id = clientId;
+      ws.instanceId = String(data.instanceId || "").slice(0, 64);
+
+      // Se a mesma aba reconectar, substituímos apenas o WebSocket.
+      // O identificador estável permite manter as conexões WebRTC já ativas.
+      for (const [oldRoom, oldMembers] of rooms) {
+        if (oldRoom === room) continue;
+        const previous = oldMembers.get(ws.id);
+        if (!previous) continue;
+        oldMembers.delete(ws.id);
+        previous.room = null;
+        previous.close(4001, "Participant moved to another room");
+        for (const peer of oldMembers.values()) send(peer, { type: "peer-left", id: ws.id, role: previous.role });
+        if (!oldMembers.size) rooms.delete(oldRoom);
+        else broadcastRoomState(oldRoom);
+      }
+
       const members = membersFor(room);
-      const activeSharers = [...members.values()].filter(p => p.role === "host").length;
+      const previous = members.get(ws.id);
+      const reconnectedPage = Boolean(previous && previous.instanceId !== ws.instanceId);
+      if (previous) {
+        previous.room = null;
+        previous.close(4001, "Participant reconnected");
+      }
+      const activeSharers = [...members.values()].filter(p => p.id !== ws.id && p.role === "host").length;
       if (role === "host" && activeSharers >= MAX_SHARERS_PER_ROOM) {
         if (!members.size) rooms.delete(room);
         return send(ws, { type: "error", code: "SHARE_LIMIT", message: "Esta sala já tem 3 compartilhamentos ativos. Para compartilhar, aguarde alguém encerrar a transmissão." });
@@ -114,8 +139,8 @@ wss.on("connection", ws => {
 
       for (const peer of members.values()) {
         if (peer.id === ws.id) continue;
-        send(peer, { type: "peer-joined", id: ws.id, role: ws.role, name: ws.displayName });
-        send(ws, { type: "peer-joined", id: peer.id, role: peer.role, name: peer.displayName });
+        send(peer, { type: "peer-joined", id: ws.id, role: ws.role, name: ws.displayName, reconnected: reconnectedPage });
+        send(ws, { type: "peer-joined", id: peer.id, role: peer.role, name: peer.displayName, reconnected: false });
       }
       broadcastRoomState(room);
       return;
@@ -129,6 +154,9 @@ wss.on("connection", ws => {
     const room = ws.room;
     const members = rooms.get(room);
     if (!members) return;
+    // Um socket antigo pode fechar depois que a mesma aba já reconectou.
+    // Nesse caso, ele não pode remover a conexão nova da sala.
+    if (members.get(ws.id) !== ws) return;
     members.delete(ws.id);
     for (const peer of members.values()) send(peer, { type: "peer-left", id: ws.id, role: ws.role });
     if (!members.size) rooms.delete(room);
@@ -144,6 +172,38 @@ const heartbeat = setInterval(() => {
   }
 }, 30000);
 wss.on("close", () => clearInterval(heartbeat));
+
+let shuttingDown = false;
+function gracefulShutdown(signalName) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(signalName + ": preparando ShareRoom para atualização.");
+  for (const members of rooms.values()) {
+    for (const peer of members.values()) {
+      send(peer, { type: "server-restarting", message: "Atualização do ShareRoom em andamento. Seu compartilhamento será mantido sempre que a conexão do navegador permitir." });
+    }
+  }
+
+  // O Render encerra o processo após sua janela de desligamento.
+  // Mantemos os WebSockets ativos por alguns segundos para não interromper
+  // desnecessariamente a sinalização enquanto o novo deploy é preparado.
+  server.close();
+  if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
+  setTimeout(() => {
+    for (const peer of wss.clients) {
+      try { peer.close(1012, "Service restart"); } catch {}
+    }
+    setTimeout(() => {
+      for (const peer of wss.clients) {
+        if (peer.readyState !== WebSocket.CLOSED) peer.terminate();
+      }
+      wss.close();
+      clearInterval(heartbeat);
+    }, 1500);
+  }, 18000);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 const port = process.env.PORT || 3000;
 server.listen(port, "0.0.0.0", () => console.log("ShareRoom online na porta " + port));
