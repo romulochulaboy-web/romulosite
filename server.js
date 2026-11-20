@@ -50,11 +50,15 @@ function participantList(room) {
     role: peer.role
   }));
 }
-function broadcastParticipants(room) {
+function broadcastRoomState(room) {
   const members = rooms.get(room);
   if (!members) return;
   const participants = participantList(room);
-  for (const peer of members.values()) send(peer, { type: "participant-list", participants });
+  const activeShares = participants.filter(person => person.role === "host").length;
+  for (const peer of members.values()) {
+    send(peer, { type: "participant-list", participants });
+    send(peer, { type: "room-state", activeShares, participantCount: participants.length });
+  }
 }
 function relay(room, ws, data) {
   const members = rooms.get(room);
@@ -113,7 +117,7 @@ wss.on("connection", ws => {
         send(peer, { type: "peer-joined", id: ws.id, role: ws.role, name: ws.displayName });
         send(ws, { type: "peer-joined", id: peer.id, role: peer.role, name: peer.displayName });
       }
-      broadcastParticipants(room);
+      broadcastRoomState(room);
       return;
     }
 
@@ -128,7 +132,7 @@ wss.on("connection", ws => {
     members.delete(ws.id);
     for (const peer of members.values()) send(peer, { type: "peer-left", id: ws.id, role: ws.role });
     if (!members.size) rooms.delete(room);
-    else broadcastParticipants(room);
+    else broadcastRoomState(room);
   });
 });
 
