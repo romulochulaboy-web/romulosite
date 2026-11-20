@@ -4,6 +4,21 @@ const $ = id => document.getElementById(id);
 const roomInput = $("roomInput"), linkText = $("linkText"), qualitySelect = $("qualitySelect"), includeAudio = $("includeAudio");
 const watchBtn = $("watchBtn"), shareBtn = $("shareBtn"), streamGrid = $("streamGrid");
 const MAX_SHARES = 3;
+function getStableClientId() {
+  const key = "shareroom-client-id";
+  try {
+    let value = sessionStorage.getItem(key);
+    if (!value) {
+      value = crypto.randomUUID();
+      sessionStorage.setItem(key, value);
+    }
+    return value;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+const CLIENT_ID = getStableClientId();
+const CLIENT_INSTANCE_ID = crypto.randomUUID();
 let ICE_CONFIG = { iceServers: [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" }
@@ -140,9 +155,19 @@ async function connect(nextRole, nextRoom, automatic = false) {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   const old = socket; socket = null;
   if (old) { old.onclose = null; old.close(); }
-  for (const [id, peer] of peers) { if (peer.recoveryTimer) clearTimeout(peer.recoveryTimer); peer.pc.close(); peers.delete(id); }
-  for (const id of [...remoteTiles.keys()]) clearRemoteTile(id);
-  myId = null; role = nextRole; room = nextRoom; updateUrl(room); setConnection("Conectando…");
+  // Em uma reconexão automática (por exemplo, durante um deploy), não
+  // encerramos os RTCPeerConnections nem removemos os vídeos já recebidos.
+  // O tráfego de mídia é ponto a ponto e pode continuar mesmo com o WS fora.
+  if (!automatic) {
+    for (const [id, peer] of peers) {
+      if (peer.recoveryTimer) clearTimeout(peer.recoveryTimer);
+      peer.pc.close();
+      peers.delete(id);
+    }
+    for (const id of [...remoteTiles.keys()]) clearRemoteTile(id);
+  }
+  myId = null; role = nextRole; room = nextRoom; updateUrl(room);
+  setConnection(automatic ? "Reconectando à sala…" : "Conectando…");
   await iceConfigReady;
   if (generation !== connectGeneration) return;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -155,7 +180,7 @@ async function connect(nextRole, nextRoom, automatic = false) {
     clearTimeout(connectionTimer);
     if (socket !== ws || generation !== connectGeneration) return;
     reconnectAttempts = 0;
-    ws.send(JSON.stringify({ type: "join", room, role }));
+    ws.send(JSON.stringify({ type: "join", room, role, clientId: CLIENT_ID, instanceId: CLIENT_INSTANCE_ID }));
   });
   ws.addEventListener("message", event => {
     if (socket !== ws) return;
@@ -336,13 +361,25 @@ async function handleSignal(data) {
       notice("Sala conectada. Até 3 pessoas podem compartilhar simultaneamente.");
       break;
     case "peer-joined":
-      if (myId && shouldConnect(data.role)) createPeer(data.id, data.role, myId.localeCompare(data.id) < 0);
+      if (myId && shouldConnect(data.role)) {
+        const existing = peers.get(data.id);
+        // Se a outra ponta recarregou a página ou a conexão antiga caiu,
+        // refazemos somente aquele par. Conexões ainda ativas são preservadas.
+        if (existing && (data.reconnected || existing.pc.connectionState !== "connected")) {
+          dropPeer(data.id);
+          clearRemoteTile(data.id);
+        }
+        if (!peers.has(data.id)) createPeer(data.id, data.role, myId.localeCompare(data.id) < 0);
+      }
       updateRoomStatus();
       if (data.role === "host") notice("Uma nova tela está entrando na sala.");
       else notice("Um participante entrou na sala.");
       break;
     case "room-state":
       if (Number.isFinite(data.activeShares)) setShareCount(data.activeShares);
+      break;
+    case "server-restarting":
+      notice(data.message || "O ShareRoom está atualizando. Reconectaremos automaticamente sem encerrar sua captura.");
       break;
     case "offer": {
       const entry = createPeer(data.from, "host", false);
