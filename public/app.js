@@ -14,7 +14,7 @@ const iceConfigReady = fetch("/rtc-config", { cache: "no-store" }).then(response
 let socket = null, room = "", role = "viewer", localStream = null, myId = null, shareCount = 0, primaryTileId = null;
 const peers = new Map(), remoteTiles = new Map(), remoteStreams = new Map();
 let monitoringStats = false;
-const statsTimer = setInterval(monitorConnections, 4000);
+const statsTimer = setInterval(monitorConnections, 8000);
 
 function preset() {
   const choices = {
@@ -280,6 +280,11 @@ async function handleSignal(data) {
     case "peer-joined":
       if (myId && shouldConnect(data.role)) createPeer(data.id, data.role, myId.localeCompare(data.id) < 0);
       updateRoomStatus();
+      if (data.role === "host") notice("Uma nova tela está entrando na sala.");
+      else notice("Um participante entrou na sala.");
+      break;
+    case "room-state":
+      if (Number.isFinite(data.activeShares)) setShareCount(data.activeShares);
       break;
     case "offer": {
       const entry = createPeer(data.from, "host", false);
@@ -320,6 +325,8 @@ async function handleSignal(data) {
       break;
     case "host-stopped":
       clearRemoteTile(data.from);
+      updateRoomStatus();
+      notice("Um participante encerrou o compartilhamento.");
       break;
     case "error":
       notice(data.message || "Ocorreu um erro.", true); setConnection("Atenção");
@@ -341,7 +348,7 @@ function dropPeer(id) {
   }
 }
 async function monitorConnections() {
-  if (monitoringStats || peers.size === 0) return;
+  if (document.hidden || monitoringStats || peers.size === 0) return;
   monitoringStats = true;
   try {
   for (const [id, entry] of peers) {
