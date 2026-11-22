@@ -248,10 +248,25 @@ async function connect(nextRole, nextRoom, automatic = false) {
   ws.addEventListener("error", () => { if (socket === ws) notice("Não foi possível conectar ao servidor. Tente novamente.", true); });
 }
 function shouldConnect(peerRole) { return role === "host" || peerRole === "host"; }
+function preferCompatibleVideoCodecs(pc) {
+  try {
+    const caps = RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities("video");
+    if (!caps || !Array.isArray(caps.codecs)) return;
+    const priority = { "video/vp8": 0, "video/h264": 1, "video/vp9": 2, "video/av1": 3, "video/rtx": 4 };
+    const codecs = caps.codecs.map((codec, index) => ({ codec, index }))
+      .sort((a, b) => (priority[String(a.codec.mimeType || "").toLowerCase()] ?? 5) - (priority[String(b.codec.mimeType || "").toLowerCase()] ?? 5) || a.index - b.index)
+      .map(item => item.codec);
+    for (const transceiver of pc.getTransceivers()) {
+      const isVideo = (transceiver.sender && transceiver.sender.track && transceiver.sender.track.kind === "video") || (transceiver.receiver && transceiver.receiver.track && transceiver.receiver.track.kind === "video");
+      if (isVideo && typeof transceiver.setCodecPreferences === "function") transceiver.setCodecPreferences(codecs);
+    }
+  } catch (error) { console.debug("Preferência de codec não aplicada; mantendo negociação padrão:", error); }
+}
 function createPeer(id, peerRole, initiator) {
   if (peers.has(id)) return peers.get(id);
   if (!shouldConnect(peerRole)) return null;
   const pc = new RTCPeerConnection(ICE_CONFIG);
+  preferCompatibleVideoCodecs(pc);
   const entry = { pc, role: peerRole, candidates: [], initiator, currentBitrate: preset().bitrate, lastLoss: 0, lastRtt: 0, recoveryTimer: null, recovering: false, recoveryAttempts: 0 };
   peers.set(id, entry);
   pc.onicecandidate = event => { if (event.candidate) signal({ type: "ice", to: id, candidate: event.candidate }); };
@@ -542,10 +557,12 @@ async function startSharing() {
     // Use only the standardized cross-browser options here. Browser-specific
     // hints such as windowAudio/systemAudio are not implemented consistently
     // (notably Firefox and Safari), and must not be required for capture to start.
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: quality.fps, max: quality.fps } },
-      audio: wantsAudio
-    });
+    const isOpera = /OPR\//i.test(navigator.userAgent) || /Opera/i.test(navigator.userAgent);
+    // Opera recebe opções simples no início da captura; a qualidade é aplicada depois.
+    const captureOptions = isOpera
+      ? { video: true, audio: wantsAudio }
+      : { video: { frameRate: { ideal: quality.fps, max: quality.fps } }, audio: wantsAudio };
+    const stream = await navigator.mediaDevices.getDisplayMedia(captureOptions);
     const capturedTrack = stream.getVideoTracks()[0];
     if (capturedTrack) {
       try {
@@ -580,17 +597,17 @@ async function startSharing() {
   } catch (error) {
     console.warn("Falha ao iniciar compartilhamento de tela:", error);
     if (error && error.name === "NotAllowedError") {
-      notice("O Edge bloqueou ou cancelou a captura. Clique novamente e, na janela nativa, escolha “Janela” para compartilhar apenas um aplicativo e confirme em Compartilhar. O site não pode selecionar a janela por você.", true);
+      notice("O navegador bloqueou ou cancelou a captura. Clique novamente e, na janela nativa, escolha “Janela” para compartilhar apenas um aplicativo e confirme em Compartilhar. O site não pode selecionar a janela por você.", true);
     } else if (error && error.name === "InvalidStateError") {
       notice("Para compartilhar, mantenha esta aba do ShareRoom aberta e clique diretamente em “Compartilhar minha tela”.", true);
     } else if (error && error.name === "NotReadableError") {
-      notice("O Edge ou o sistema não conseguiu capturar essa tela. Feche outras capturas de tela ativas e tente novamente.", true);
+      notice("O navegador ou o sistema não conseguiu capturar essa tela. Feche outras capturas de tela ativas e tente novamente.", true);
     } else if (error && error.name === "NotFoundError") {
       notice("Nenhuma tela disponível para captura foi encontrada. Verifique o sistema e tente novamente.", true);
     } else if (error && error.name === "TypeError") {
-      notice("O navegador rejeitou as opções de captura. Atualize o Edge e tente novamente.", true);
+      notice("O navegador rejeitou as opções de captura. Atualize o navegador e tente novamente.", true);
     } else {
-      notice("Não foi possível iniciar o compartilhamento (" + ((error && error.name) || "erro desconhecido") + "). Tente novamente pelo botão e conclua a seleção na janela do Edge.", true);
+      notice("Não foi possível iniciar o compartilhamento (" + ((error && error.name) || "erro desconhecido") + "). Tente novamente pelo botão e conclua a seleção na janela do navegador.", true);
     }
   }
 }
