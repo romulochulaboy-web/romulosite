@@ -133,13 +133,18 @@ function addTile(id, title, stream, isLocal = false) {
     primaryButton.textContent = "Definir como principal";
     primaryButton.addEventListener("click", () => selectPrimaryTile(isLocal ? "local" : id));
     audioButton.addEventListener("click", () => {
-      video.muted = !video.muted;
-      if (!video.muted && video.volume === 0) video.volume = 1;
+      // O botão também serve como gesto do usuário quando o autoplay com som é bloqueado.
+      if (video.muted || video.paused) {
+        video.muted = false;
+        if (video.volume === 0) video.volume = 1;
+      } else {
+        video.muted = true;
+      }
       video.dataset.audioEnabled = String(!video.muted);
       audioButton.textContent = video.muted ? "Ativar áudio" : "Silenciar áudio";
       video.play().catch(() => {
         audioButton.textContent = "Toque para ouvir";
-        notice("O navegador bloqueou o áudio automático. Toque em “Toque para ouvir” para liberar o som.");
+        notice("O navegador ainda não liberou o áudio. Toque novamente para tentar reproduzir.");
       });
     });
     meta.append(name, resolution, audioButton, volumeControl, primaryButton); tile.append(video, meta); streamGrid.append(tile);
