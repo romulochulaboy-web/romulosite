@@ -245,3 +245,26 @@ input, select, button { max-width: 100%; }
   .simple-button-row .button { min-height: 49px; }
   .advanced-settings summary { padding: 16px 2px; }
 }
+
+
+/* Controles de áudio por transmissão */
+.stream-volume-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 92px;
+  color: #cbbcff;
+  font-size: 12px;
+}
+.stream-volume-control[hidden] { display: none !important; }
+.stream-volume-control input {
+  width: 82px;
+  max-width: 24vw;
+  accent-color: #9a7cff;
+  cursor: pointer;
+}
+.audio-option-info { cursor: default; }
+@media (max-width: 600px) {
+  .stream-volume-control { min-height: 36px; }
+  .stream-volume-control input { width: 96px; max-width: 30vw; }
+}
