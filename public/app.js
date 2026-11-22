@@ -564,65 +564,81 @@ async function monitorConnections() {
 async function startSharing() {
   if (localStream) { notice("Sua tela já está sendo compartilhada."); return; }
   const targetRoom = currentRoom(); if (!targetRoom) return;
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { notice("Este navegador não disponibiliza compartilhamento de tela. Tente uma versão atualizada de um navegador compatível para desktop.", true); return; }
+
+  // Screen capture is only available where the browser exposes getDisplayMedia
+  // in a secure context. Do not rely on browser names/user-agent detection.
+  const capture = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
+  if (!capture) {
+    notice("Este navegador ou dispositivo não oferece compartilhamento de tela. Atualize o navegador e tente em um computador usando Chrome, Edge, Firefox, Opera ou Safari compatível.", true);
+    return;
+  }
+
   try {
     const quality = preset();
-    // Start with the most compatible request; apply preferred quality after the native picker succeeds.
-    const wantsAudio = true;
-    // Use only the standardized cross-browser options here. Browser-specific
-    // hints such as windowAudio/systemAudio are not implemented consistently
-    // (notably Firefox and Safari), and must not be required for capture to start.
-    const isOpera = /OPR\//i.test(navigator.userAgent) || /Opera/i.test(navigator.userAgent);
-    // Opera recebe opções simples no início da captura; a qualidade é aplicada depois.
-    const captureOptions = isOpera
-      ? { video: true, audio: wantsAudio }
-      : { video: { frameRate: { ideal: quality.fps, max: quality.fps } }, audio: wantsAudio };
-    const stream = await navigator.mediaDevices.getDisplayMedia(captureOptions);
-    const capturedTrack = stream.getVideoTracks()[0];
-    if (capturedTrack) {
-      try {
-        await capturedTrack.applyConstraints({
-          width: { ideal: quality.width },
-          height: { ideal: quality.height },
-          frameRate: { ideal: quality.fps }
-        });
-      } catch (constraintError) {
-        console.debug("Mantendo a qualidade padrão da captura:", constraintError);
+    let stream;
+    // Keep the initial request intentionally minimal for Chromium, Firefox,
+    // and Safari implementations. Audio capture support varies by browser,
+    // operating system, and the source selected in the native picker.
+    try {
+      stream = await capture.call(navigator.mediaDevices, { video: true, audio: true });
+    } catch (firstError) {
+      // Some implementations reject system-audio capture even though they
+      // support video capture. Retry video-only rather than failing the share.
+      if (firstError && (firstError.name === "TypeError" || firstError.name === "OverconstrainedError" || firstError.name === "NotSupportedError")) {
+        notice("Este navegador não aceitou a captura de áudio. Tentando compartilhar somente a imagem…");
+        stream = await capture.call(navigator.mediaDevices, { video: true });
+      } else {
+        throw firstError;
       }
     }
-    localStream = stream;
-    const track = stream.getVideoTracks()[0];
-    if (track) {
-      track.contentHint = qualitySelect.value === "fluid" ? "motion" : "detail";
-      track.addEventListener("ended", () => stopSharing(true, true), { once: true });
+
+    const capturedTrack = stream.getVideoTracks()[0];
+    if (!capturedTrack) {
+      stream.getTracks().forEach(track => track.stop());
+      throw new Error("NO_VIDEO_TRACK");
     }
+    try {
+      await capturedTrack.applyConstraints({
+        width: { ideal: quality.width },
+        height: { ideal: quality.height },
+        frameRate: { ideal: quality.fps }
+      });
+    } catch (constraintError) {
+      console.debug("Mantendo a qualidade padrão da captura:", constraintError);
+    }
+
+    localStream = stream;
+    capturedTrack.contentHint = qualitySelect.value === "fluid" ? "motion" : "detail";
+    capturedTrack.addEventListener("ended", () => stopSharing(true, true), { once: true });
     addLocalTile();
     $("viewerTitle").textContent = "Compartilhando sua tela";
     $("viewerSubtitle").textContent = "A tela será enviada aos participantes";
     $("qualityBadge").textContent = quality.label;
     connect("host", targetRoom);
     shareBtn.disabled = true; shareBtn.textContent = "Compartilhando…";
-    if (wantsAudio && stream.getAudioTracks().length === 0) {
-      notice("A tela foi compartilhada, mas o navegador não disponibilizou uma faixa de áudio. Verifique se o seletor oferece a opção de compartilhar áudio. Alguns navegadores e sistemas não permitem capturar o som da janela; nesse caso, a transmissão continuará somente com vídeo.", true);
-    } else if (wantsAudio) {
-      notice("Tela e áudio solicitados e disponíveis. O som começa habilitado para quem estiver assistindo, respeitando as permissões de reprodução do navegador.");
+
+    const hasAudio = stream.getAudioTracks().some(track => track.readyState === "live");
+    if (hasAudio) {
+      notice("Compartilhamento iniciado com imagem e áudio. A reprodução do som para quem assiste depende da permissão do navegador.");
     } else {
-      notice("Compartilhamento iniciado sem áudio. Se quiser som, encerre e inicie novamente com “Compartilhar áudio da janela” ativado; escolha uma fonte que ofereça áudio no seletor do navegador.");
+      notice("Compartilhamento iniciado com imagem. Este navegador, sistema ou fonte selecionada não disponibilizou áudio; a transmissão de vídeo continuará normalmente.");
     }
   } catch (error) {
     console.warn("Falha ao iniciar compartilhamento de tela:", error);
-    if (error && error.name === "NotAllowedError") {
-      notice("O navegador bloqueou ou cancelou a captura. Clique novamente e, na janela nativa, escolha “Janela” para compartilhar apenas um aplicativo e confirme em Compartilhar. O site não pode selecionar a janela por você.", true);
+    if (error && error.message === "NO_VIDEO_TRACK") {
+      notice("O navegador não forneceu uma faixa de vídeo. Tente selecionar uma tela ou janela diferente.", true);
+    } else if (error && error.name === "NotAllowedError") {
+      notice("A captura foi bloqueada ou cancelada. Clique novamente, selecione uma tela, janela ou aba e confirme o compartilhamento.", true);
     } else if (error && error.name === "InvalidStateError") {
-      notice("Para compartilhar, mantenha esta aba do ShareRoom aberta e clique diretamente em “Compartilhar minha tela”.", true);
+      notice("Para compartilhar, mantenha esta aba aberta e clique diretamente no botão de compartilhamento.", true);
     } else if (error && error.name === "NotReadableError") {
-      notice("O navegador ou o sistema não conseguiu capturar essa tela. Feche outras capturas de tela ativas e tente novamente.", true);
+      notice("O sistema não conseguiu capturar essa tela. Feche outras capturas ativas e tente novamente.", true);
     } else if (error && error.name === "NotFoundError") {
-      notice("Nenhuma tela disponível para captura foi encontrada. Verifique o sistema e tente novamente.", true);
-    } else if (error && error.name === "TypeError") {
-      notice("O navegador rejeitou as opções de captura. Atualize o navegador e tente novamente.", true);
+      notice("Nenhuma tela disponível para captura foi encontrada. Verifique as permissões do sistema.", true);
+    } else if (error && error.name === "SecurityError") {
+      notice("O navegador bloqueou a captura por segurança. Acesse o ShareRoom por HTTPS e verifique as permissões do navegador.", true);
     } else {
-      notice("Não foi possível iniciar o compartilhamento (" + ((error && error.name) || "erro desconhecido") + "). Tente novamente pelo botão e conclua a seleção na janela do navegador.", true);
+      notice("Não foi possível iniciar o compartilhamento (" + ((error && error.name) || "erro desconhecido") + "). Atualize o navegador e tente novamente.", true);
     }
   }
 }
