@@ -175,8 +175,21 @@ function addTile(id, title, stream, isLocal = false) {
     const volumeControl = tile.querySelector(".stream-volume-control");
     if (volumeControl) volumeControl.hidden = !hasAudio;
   }
-  video.play().catch(() => {
-    if (!isLocal && audioButton && !audioButton.disabled) audioButton.textContent = "Toque para ouvir";
+  video.play().catch(async () => {
+    if (isLocal) return;
+    // Opera/Chromium pode bloquear autoplay com som. Nesse caso, iniciar
+    // o vídeo silenciado evita que a tela inteira fique preta; o usuário
+    // pode liberar o áudio pelo botão sem interromper a transmissão.
+    video.muted = true;
+    video.dataset.audioEnabled = "false";
+    if (audioButton && !audioButton.disabled) audioButton.textContent = "Ativar áudio";
+    try {
+      await video.play();
+      notice("A tela está sendo reproduzida. Toque em “Ativar áudio” para liberar o som neste navegador.");
+    } catch (error) {
+      console.debug("Autoplay de vídeo bloqueado pelo navegador:", error);
+      if (audioButton && !audioButton.disabled) audioButton.textContent = "Toque para reproduzir";
+    }
   });
   tile.querySelector(".stream-name").textContent = title;
   selectPrimaryTile(primaryTileId || (isLocal ? "local" : id));
@@ -266,7 +279,6 @@ function createPeer(id, peerRole, initiator) {
   if (peers.has(id)) return peers.get(id);
   if (!shouldConnect(peerRole)) return null;
   const pc = new RTCPeerConnection(ICE_CONFIG);
-  preferCompatibleVideoCodecs(pc);
   const entry = { pc, role: peerRole, candidates: [], initiator, currentBitrate: preset().bitrate, lastLoss: 0, lastRtt: 0, recoveryTimer: null, recovering: false, recoveryAttempts: 0 };
   peers.set(id, entry);
   pc.onicecandidate = event => { if (event.candidate) signal({ type: "ice", to: id, candidate: event.candidate }); };
@@ -322,6 +334,9 @@ function createPeer(id, peerRole, initiator) {
     pc.addTransceiver("video", { direction: "recvonly" });
     pc.addTransceiver("audio", { direction: "recvonly" });
   }
+  // As transceivers só existem depois de addTrack/addTransceiver.
+  // Aplicar preferências antes disso não altera a negociação de codecs.
+  preferCompatibleVideoCodecs(pc);
   if (initiator) makeOffer(id, entry, false);
   return entry;
 }
