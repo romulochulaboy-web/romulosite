@@ -1,7 +1,7 @@
 (() => {
 "use strict";
 const $ = id => document.getElementById(id);
-const roomInput = $("roomInput"), linkText = $("linkText"), qualitySelect = $("qualitySelect"), includeAudio = $("includeAudio");
+const roomInput = $("roomInput"), linkText = $("linkText"), qualitySelect = $("qualitySelect");
 const watchBtn = $("watchBtn"), shareBtn = $("shareBtn"), streamGrid = $("streamGrid");
 const MAX_SHARES = 3;
 function getStableClientId() {
@@ -99,13 +99,34 @@ function addTile(id, title, stream, isLocal = false) {
     if (isLocal) tile.id = "localTile";
     tile.dataset.peer = id;
     const video = document.createElement("video");
-    video.autoplay = true; video.playsInline = true; video.muted = true;
+    video.autoplay = true; video.playsInline = true; video.muted = isLocal; video.volume = 1;
     const meta = document.createElement("div"); meta.className = "stream-meta";
     const name = document.createElement("strong"); name.className = "stream-name"; name.textContent = title;
     const resolution = document.createElement("span"); resolution.className = "stream-resolution"; resolution.textContent = "Conectando…";
     const audioButton = document.createElement("button");
     audioButton.type = "button"; audioButton.className = "stream-audio-button";
-    audioButton.textContent = "Ativar áudio"; audioButton.hidden = isLocal;
+    audioButton.textContent = "Áudio ligado"; audioButton.hidden = isLocal;
+    const volumeControl = document.createElement("label");
+    volumeControl.className = "stream-volume-control";
+    volumeControl.title = "Volume do compartilhamento";
+    const volumeIcon = document.createElement("span");
+    volumeIcon.textContent = "🔊";
+    volumeIcon.setAttribute("aria-hidden", "true");
+    const volumeSlider = document.createElement("input");
+    volumeSlider.type = "range";
+    volumeSlider.min = "0";
+    volumeSlider.max = "1";
+    volumeSlider.step = "0.05";
+    volumeSlider.value = "1";
+    volumeSlider.setAttribute("aria-label", "Volume do áudio");
+    volumeSlider.addEventListener("input", () => {
+      video.volume = Number(volumeSlider.value);
+      if (video.volume > 0 && video.muted) video.muted = false;
+      if (video.volume === 0) video.muted = true;
+      video.dataset.audioEnabled = String(!video.muted);
+      audioButton.textContent = video.muted ? "Ativar áudio" : "Áudio ligado";
+    });
+    volumeControl.append(volumeIcon, volumeSlider);
     const primaryButton = document.createElement("button");
     primaryButton.type = "button";
     primaryButton.className = "stream-primary-button";
@@ -113,11 +134,15 @@ function addTile(id, title, stream, isLocal = false) {
     primaryButton.addEventListener("click", () => selectPrimaryTile(isLocal ? "local" : id));
     audioButton.addEventListener("click", () => {
       video.muted = !video.muted;
+      if (!video.muted && video.volume === 0) video.volume = 1;
       video.dataset.audioEnabled = String(!video.muted);
       audioButton.textContent = video.muted ? "Ativar áudio" : "Silenciar áudio";
-      video.play().catch(() => {});
+      video.play().catch(() => {
+        audioButton.textContent = "Toque para ouvir";
+        notice("O navegador bloqueou o áudio automático. Toque em “Toque para ouvir” para liberar o som.");
+      });
     });
-    meta.append(name, resolution, audioButton, primaryButton); tile.append(video, meta); streamGrid.append(tile);
+    meta.append(name, resolution, audioButton, volumeControl, primaryButton); tile.append(video, meta); streamGrid.append(tile);
     if (!isLocal) remoteTiles.set(id, tile);
     video.addEventListener("loadedmetadata", () => {
       if (video.videoWidth && video.videoHeight) resolution.textContent = video.videoWidth + " × " + video.videoHeight;
@@ -126,15 +151,28 @@ function addTile(id, title, stream, isLocal = false) {
   }
   const video = tile.querySelector("video");
   if (video.srcObject !== stream) video.srcObject = stream;
-  if (isLocal) video.muted = true;
-  else if (video.dataset.audioEnabled !== "true") video.muted = true;
+  if (isLocal) {
+    video.muted = true;
+  } else if (video.dataset.audioInitialized !== "true") {
+    // Toda nova tela recebida começa com áudio habilitado e volume máximo.
+    video.muted = false;
+    video.volume = 1;
+    video.dataset.audioEnabled = "true";
+    video.dataset.audioInitialized = "true";
+  }
   const audioButton = tile.querySelector(".stream-audio-button");
+  const volumeSlider = tile.querySelector(".stream-volume-control input");
+  if (volumeSlider && !isLocal) volumeSlider.value = String(video.volume);
   if (audioButton && !isLocal) {
     const hasAudio = stream.getAudioTracks().some(track => track.readyState === "live");
     audioButton.disabled = !hasAudio;
-    audioButton.textContent = hasAudio ? (video.muted ? "Ativar áudio" : "Silenciar áudio") : "Sem áudio compartilhado";
+    audioButton.textContent = hasAudio ? (video.muted ? "Ativar áudio" : "Áudio ligado") : "Sem áudio compartilhado";
+    const volumeControl = tile.querySelector(".stream-volume-control");
+    if (volumeControl) volumeControl.hidden = !hasAudio;
   }
-  video.play().catch(() => {});
+  video.play().catch(() => {
+    if (!isLocal && audioButton && !audioButton.disabled) audioButton.textContent = "Toque para ouvir";
+  });
   tile.querySelector(".stream-name").textContent = title;
   selectPrimaryTile(primaryTileId || (isLocal ? "local" : id));
   return tile;
@@ -495,7 +533,7 @@ async function startSharing() {
   try {
     const quality = preset();
     // Start with the most compatible request; apply preferred quality after the native picker succeeds.
-    const wantsAudio = Boolean(includeAudio && includeAudio.checked);
+    const wantsAudio = true;
     // Use only the standardized cross-browser options here. Browser-specific
     // hints such as windowAudio/systemAudio are not implemented consistently
     // (notably Firefox and Safari), and must not be required for capture to start.
@@ -530,7 +568,7 @@ async function startSharing() {
     if (wantsAudio && stream.getAudioTracks().length === 0) {
       notice("A tela foi compartilhada, mas o navegador não disponibilizou uma faixa de áudio. Verifique se o seletor oferece a opção de compartilhar áudio. Alguns navegadores e sistemas não permitem capturar o som da janela; nesse caso, a transmissão continuará somente com vídeo.", true);
     } else if (wantsAudio) {
-      notice("Tela e áudio recebidos do seletor do navegador. Nenhum microfone foi solicitado. Quem assistir deverá clicar em “Ativar áudio”.");
+      notice("Tela e áudio solicitados e disponíveis. O som começa habilitado para quem estiver assistindo, respeitando as permissões de reprodução do navegador.");
     } else {
       notice("Compartilhamento iniciado sem áudio. Se quiser som, encerre e inicie novamente com “Compartilhar áudio da janela” ativado; escolha uma fonte que ofereça áudio no seletor do navegador.");
     }
