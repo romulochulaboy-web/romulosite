@@ -24,8 +24,14 @@ app.use(express.static(path.join(__dirname, "public"), { maxAge: 0, setHeaders(r
 app.get("/healthz", (_req, res) => res.json({ ok: true, maxSimultaneousShares: MAX_SHARERS_PER_ROOM }));
 app.get("/rtc-config", (_req, res) => {
   const iceServers = [
+    // STUN de provedores distintos: amplia as opções de descoberta de rota
+    // quando uma operadora/região apresenta falha com um endpoint específico.
     { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" }
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" }
   ];
   if (process.env.TURN_URL && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
     iceServers.push({ urls: process.env.TURN_URL.split(",").map(value => value.trim()), username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
