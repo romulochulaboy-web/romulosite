@@ -576,19 +576,38 @@ async function startSharing() {
   try {
     const quality = preset();
     let stream;
-    // Keep the initial request intentionally minimal for Chromium, Firefox,
-    // and Safari implementations. Audio capture support varies by browser,
-    // operating system, and the source selected in the native picker.
+    // Prefer audio from the selected browser/window source and explicitly
+    // exclude system audio where the browser supports these display-capture
+    // hints. This avoids mixing Discord/system sounds into the share.
+    // Firefox/Safari/older Chromium may reject the advanced hints, so retry
+    // with the standard request (still asking for source audio).
+    let audioCaptureMode = "source-only";
     try {
-      stream = await capture.call(navigator.mediaDevices, { video: true, audio: true });
-    } catch (firstError) {
-      // Some implementations reject system-audio capture even though they
-      // support video capture. Retry video-only rather than failing the share.
-      if (firstError && (firstError.name === "TypeError" || firstError.name === "OverconstrainedError" || firstError.name === "NotSupportedError")) {
-        notice("Este navegador não aceitou a captura de áudio. Tentando compartilhar somente a imagem…");
-        stream = await capture.call(navigator.mediaDevices, { video: true });
+      stream = await capture.call(navigator.mediaDevices, {
+        video: true,
+        audio: true,
+        systemAudio: "exclude",
+        windowAudio: "window",
+        selfBrowserSurface: "exclude",
+        surfaceSwitching: "include",
+        monitorTypeSurfaces: "include"
+      });
+    } catch (advancedError) {
+      if (advancedError && (advancedError.name === "TypeError" || advancedError.name === "OverconstrainedError" || advancedError.name === "NotSupportedError")) {
+        audioCaptureMode = "standard";
+        try {
+          stream = await capture.call(navigator.mediaDevices, { video: true, audio: true });
+        } catch (firstError) {
+          if (firstError && (firstError.name === "TypeError" || firstError.name === "OverconstrainedError" || firstError.name === "NotSupportedError")) {
+            notice("Este navegador não aceitou a captura de áudio. Tentando compartilhar somente a imagem…");
+            stream = await capture.call(navigator.mediaDevices, { video: true });
+            audioCaptureMode = "video-only";
+          } else {
+            throw firstError;
+          }
+        }
       } else {
-        throw firstError;
+        throw advancedError;
       }
     }
 
@@ -618,8 +637,10 @@ async function startSharing() {
     shareBtn.disabled = true; shareBtn.textContent = "Compartilhando…";
 
     const hasAudio = stream.getAudioTracks().some(track => track.readyState === "live");
-    if (hasAudio) {
-      notice("Compartilhamento iniciado com imagem e áudio. A reprodução do som para quem assiste depende da permissão do navegador.");
+    if (hasAudio && audioCaptureMode === "source-only") {
+      notice("Áudio da fonte ativado. Para evitar o Discord, prefira compartilhar uma aba do navegador com áudio; sons do sistema são excluídos quando suportado.");
+    } else if (hasAudio) {
+      notice("Áudio solicitado. Este navegador não oferece o filtro de áudio da fonte; para evitar Discord/som do sistema, escolha uma aba do navegador e marque compartilhar áudio.");
     } else {
       notice("Compartilhamento iniciado com imagem. Este navegador, sistema ou fonte selecionada não disponibilizou áudio; a transmissão de vídeo continuará normalmente.");
     }
