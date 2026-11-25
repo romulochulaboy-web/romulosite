@@ -34,9 +34,9 @@ const statsTimer = setInterval(monitorConnections, 8000);
 
 function preset() {
   const choices = {
-    auto: { width: 1280, height: 720, fps: 30, bitrate: 1500000, aggregateBitrate: 3200000, label: "720p · 30 FPS (otimizada)" },
+    auto: { width: 1920, height: 1080, fps: 60, bitrate: 5500000, aggregateBitrate: 8500000, label: "1080p · 60 FPS (recomendada)" },
     p1080: { width: 1920, height: 1080, fps: 30, bitrate: 3000000, aggregateBitrate: 5000000, label: "1080p · 30 FPS" },
-    fluid: { width: 1920, height: 1080, fps: 60, bitrate: 3500000, aggregateBitrate: 5000000, label: "1080p · 60 FPS" },
+    fluid: { width: 1920, height: 1080, fps: 60, bitrate: 6500000, aggregateBitrate: 9500000, label: "1080p · 60 FPS (alta taxa)" },
     p720: { width: 1280, height: 720, fps: 30, bitrate: 1500000, aggregateBitrate: 3200000, label: "720p · 30 FPS" },
     p480: { width: 854, height: 480, fps: 24, bitrate: 650000, aggregateBitrate: 1800000, label: "480p · 24 FPS" }
   };
